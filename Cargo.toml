@@ -1,18 +1,18 @@
 [package]
-name = "serde_yaml"
-version = "0.9.34+deprecated"
-authors = ["David Tolnay <dtolnay@gmail.com>"]
+name = "dbt_serde_yaml"
+version = "0.0.1"
+authors = ["Bo Lin <bo.lin@dbtlabs.com>", "David Tolnay <dtolnay@gmail.com>"]
 categories = ["encoding", "parser-implementations"]
 description = "YAML data format for Serde"
 documentation = "https://docs.rs/serde_yaml/"
 edition = "2021"
 keywords = ["yaml", "serde", "serialization"]
 license = "MIT OR Apache-2.0"
-repository = "https://github.com/dtolnay/serde-yaml"
-rust-version = "1.64"
+repository = "https://github.com/sdf-labs/dbt-serde-yaml"
+rust-version = "1.84"
 
 [dependencies]
-indexmap = "2.2.1"
+indexmap = "2.7.1"
 itoa = "1.0"
 ryu = "1.0"
 serde = "1.0.195"
