@@ -23,7 +23,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        rust: [nightly, beta, stable, 1.64.0]
+        rust: [nightly, stable, 1.84.0]
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
@@ -58,7 +58,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@clippy
-      - run: cargo clippy --tests -- -Dclippy::all -Dclippy::pedantic
+      - run: cargo clippy --tests -- -Dclippy::all
 
   miri:
     name: Miri

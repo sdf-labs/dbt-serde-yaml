@@ -143,7 +143,7 @@ fn test_tagged() {
         Variant(usize),
     }
 
-    let value = dbt_serde_yaml::to_value(&Enum::Variant(0)).unwrap();
+    let value = dbt_serde_yaml::to_value(Enum::Variant(0)).unwrap();
 
     let deserialized: dbt_serde_yaml::Value = dbt_serde_yaml::from_value(value.clone()).unwrap();
     assert_eq!(value, deserialized);
