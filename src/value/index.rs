@@ -29,14 +29,14 @@ impl Index for usize {
     fn index_into<'v>(&self, v: &'v Value) -> Option<&'v Value> {
         match v.untag_ref() {
             Value::Sequence(vec) => vec.get(*self),
-            Value::Mapping(vec) => vec.get(&Value::Number((*self).into())),
+            Value::Mapping(vec) => vec.get(Value::Number((*self).into())),
             _ => None,
         }
     }
     fn index_into_mut<'v>(&self, v: &'v mut Value) -> Option<&'v mut Value> {
         match v.untag_mut() {
             Value::Sequence(vec) => vec.get_mut(*self),
-            Value::Mapping(vec) => vec.get_mut(&Value::Number((*self).into())),
+            Value::Mapping(vec) => vec.get_mut(Value::Number((*self).into())),
             _ => None,
         }
     }
@@ -145,7 +145,7 @@ impl Index for String {
     }
 }
 
-impl<'a, T> Index for &'a T
+impl<T> Index for &T
 where
     T: ?Sized + Index,
 {
@@ -163,7 +163,7 @@ where
 /// Used in panic messages.
 struct Type<'a>(&'a Value);
 
-impl<'a> fmt::Display for Type<'a> {
+impl fmt::Display for Type<'_> {
     fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
         match self.0 {
             Value::Null => formatter.write_str("null"),

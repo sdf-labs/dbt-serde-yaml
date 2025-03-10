@@ -144,7 +144,7 @@ impl<'de> Deserializer<'de> {
     }
 }
 
-impl<'de> Iterator for Deserializer<'de> {
+impl Iterator for Deserializer<'_> {
     type Item = Self;
 
     fn next(&mut self) -> Option<Self> {
@@ -651,7 +651,7 @@ struct SeqAccess<'de, 'document, 'seq> {
     len: usize,
 }
 
-impl<'de, 'document, 'seq> de::SeqAccess<'de> for SeqAccess<'de, 'document, 'seq> {
+impl<'de> de::SeqAccess<'de> for SeqAccess<'de, '_, '_> {
     type Error = Error;
 
     fn next_element_seed<T>(&mut self, seed: T) -> Result<Option<T::Value>>
@@ -689,7 +689,7 @@ struct MapAccess<'de, 'document, 'map> {
     key: Option<&'document [u8]>,
 }
 
-impl<'de, 'document, 'map> de::MapAccess<'de> for MapAccess<'de, 'document, 'map> {
+impl<'de> de::MapAccess<'de> for MapAccess<'de, '_, '_> {
     type Error = Error;
 
     fn next_key_seed<K>(&mut self, seed: K) -> Result<Option<K::Value>>
@@ -745,7 +745,7 @@ struct EnumAccess<'de, 'document, 'variant> {
     tag: &'document str,
 }
 
-impl<'de, 'document, 'variant> de::EnumAccess<'de> for EnumAccess<'de, 'document, 'variant> {
+impl<'de, 'variant> de::EnumAccess<'de> for EnumAccess<'de, '_, 'variant> {
     type Error = Error;
     type Variant = DeserializerFromEvents<'de, 'variant>;
 
@@ -770,7 +770,7 @@ impl<'de, 'document, 'variant> de::EnumAccess<'de> for EnumAccess<'de, 'document
     }
 }
 
-impl<'de, 'document> de::VariantAccess<'de> for DeserializerFromEvents<'de, 'document> {
+impl<'de> de::VariantAccess<'de> for DeserializerFromEvents<'de, '_> {
     type Error = Error;
 
     fn unit_variant(mut self) -> Result<()> {
@@ -803,7 +803,7 @@ struct UnitVariantAccess<'de, 'document, 'variant> {
     de: &'variant mut DeserializerFromEvents<'de, 'document>,
 }
 
-impl<'de, 'document, 'variant> de::EnumAccess<'de> for UnitVariantAccess<'de, 'document, 'variant> {
+impl<'de> de::EnumAccess<'de> for UnitVariantAccess<'de, '_, '_> {
     type Error = Error;
     type Variant = Self;
 
@@ -815,9 +815,7 @@ impl<'de, 'document, 'variant> de::EnumAccess<'de> for UnitVariantAccess<'de, 'd
     }
 }
 
-impl<'de, 'document, 'variant> de::VariantAccess<'de>
-    for UnitVariantAccess<'de, 'document, 'variant>
-{
+impl<'de> de::VariantAccess<'de> for UnitVariantAccess<'de, '_, '_> {
     type Error = Error;
 
     fn unit_variant(self) -> Result<()> {
@@ -1165,7 +1163,7 @@ fn invalid_type(event: &Event, exp: &dyn Expected) -> Error {
         exp: &'a dyn Expected,
     }
 
-    impl<'de, 'a> Visitor<'de> for InvalidType<'a> {
+    impl Visitor<'_> for InvalidType<'_> {
         type Value = Void;
 
         fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
@@ -1202,7 +1200,7 @@ fn parse_tag(libyaml_tag: &Option<Tag>) -> Option<&str> {
     }
 }
 
-impl<'de, 'document> de::Deserializer<'de> for &mut DeserializerFromEvents<'de, 'document> {
+impl<'de> de::Deserializer<'de> for &mut DeserializerFromEvents<'de, '_> {
     type Error = Error;
 
     fn deserialize_any<V>(self, visitor: V) -> Result<V::Value>
