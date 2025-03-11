@@ -85,7 +85,7 @@ where
 {
     fn clone(&self) -> Self {
         Spanned {
-            span: self.span.clone(),
+            span: self.span,
             node: self.node.clone(),
         }
     }
