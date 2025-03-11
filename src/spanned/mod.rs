@@ -57,6 +57,11 @@ impl<T> Spanned<T> {
     pub fn span(&self) -> &Span {
         &self.span
     }
+
+    /// True if this [Spanned] actually contains a valid span.
+    pub fn has_valid_span(&self) -> bool {
+        self.span.is_valid()
+    }
 }
 
 impl<T> Deref for Spanned<T> {

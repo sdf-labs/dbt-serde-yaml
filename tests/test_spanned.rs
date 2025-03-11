@@ -37,6 +37,7 @@ fn test_spanned_de_basic() {
 
     let yaml = "x: 1.0\ny: 2.0\n";
     let spanned_point: Spanned<Point> = dbt_serde_yaml::from_str(yaml).unwrap();
+    assert!(spanned_point.has_valid_span());
     assert_eq!(*spanned_point, Point { x: 1.0, y: 2.0 });
     assert_eq!(spanned_point.span().start.index, 0);
     assert_eq!(spanned_point.span().start.line, 1);
@@ -53,6 +54,8 @@ fn test_spanned_de_basic() {
 
     let point2: Point2 = dbt_serde_yaml::from_str(yaml).unwrap();
     assert_eq!(*point2.x, 1.0);
+    assert!(point2.x.has_valid_span());
+    assert!(point2.y.has_valid_span());
     assert_eq!(point2.x.span().start.index, 3);
     assert_eq!(*point2.y, 2.0);
     assert_eq!(point2.y.span().start.line, 2);
@@ -81,6 +84,7 @@ fn test_spanned_de_multidoc() -> Result<(), dbt_serde_yaml::Error> {
     let mut points = vec![];
     for document in dbt_serde_yaml::Deserializer::from_str(yaml) {
         let point = Spanned::<Point>::deserialize(document)?;
+        assert!(point.has_valid_span());
         points.push(point);
     }
     assert_eq!(*points[0].x, 1.0);
