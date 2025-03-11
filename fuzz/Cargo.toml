@@ -1,5 +1,5 @@
 [package]
-name = "dbt-serde-yaml-fuzz"
+name = "dbt-serde_yaml-fuzz"
 version = "0.0.0"
 authors = ["David Tolnay <dtolnay@gmail.com>"]
 edition = "2021"
@@ -10,7 +10,7 @@ cargo-fuzz = true
 
 [dependencies]
 libfuzzer-sys = "0.4"
-dbt-serde-yaml = { path = ".." }
+dbt-serde_yaml = { path = ".." }
 
 [[bin]]
 name = "fuzz_from_slice"
