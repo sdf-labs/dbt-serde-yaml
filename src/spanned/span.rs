@@ -10,6 +10,17 @@ pub struct Span {
     pub end: Marker,
 }
 
+impl Span {
+    /// True if this span is valid.
+    pub fn is_valid(&self) -> bool {
+        self.start.index <= self.end.index
+            && self.start.line > 0
+            && self.start.column > 0
+            && self.end.line > 0
+            && self.end.column > 0
+    }
+}
+
 /// A location in the source string.
 #[derive(Copy, Clone, Default, Debug)]
 pub struct Marker {
