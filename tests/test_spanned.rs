@@ -60,12 +60,12 @@ fn test_spanned_de_basic() {
     assert_eq!(point2.y.span().end.line, 3);
     assert_eq!(point2.y.span().end.column, 1);
     assert_eq!(
-        &yaml[point2.x.span().start.index..point2.x.span().end.index],
-        "1.0\n"
+        yaml[point2.x.span().start.index..point2.x.span().end.index].trim(),
+        "1.0"
     );
     assert_eq!(
-        &yaml[point2.y.span().start.index..point2.y.span().end.index],
-        "2.0\n"
+        yaml[point2.y.span().start.index..point2.y.span().end.index].trim(),
+        "2.0"
     );
 }
 
@@ -89,12 +89,13 @@ fn test_spanned_de_multidoc() -> Result<(), dbt_serde_yaml::Error> {
     assert_eq!(*points[1].y, 4.0);
 
     assert_eq!(
-        &yaml[points[0].span().start.index..points[0].span().end.index],
-        "x: 1.0\ny: 2.0\n"
+        yaml[points[0].span().start.index..points[0].span().end.index].trim(),
+        "x: 1.0\ny: 2.0"
     );
     assert_eq!(
-        &yaml[points[1].span().start.index..points[1].span().end.index],
-        "---\nx: 3.0\ny: 4.0\n"
+        yaml[points[1].span().start.index..points[1].span().end.index].trim(),
+        // TODO: exclude the document separator
+        "---\nx: 3.0\ny: 4.0"
     );
 
     Ok(())

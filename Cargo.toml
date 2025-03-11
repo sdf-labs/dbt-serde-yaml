@@ -1,5 +1,5 @@
 [package]
-name = "dbt-serde-yaml"
+name = "dbt-serde_yaml"
 version = "0.0.1"
 authors = ["Bo Lin <bo.lin@dbtlabs.com>", "David Tolnay <dtolnay@gmail.com>"]
 categories = ["encoding", "parser-implementations"]

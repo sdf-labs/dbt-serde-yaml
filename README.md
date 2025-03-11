@@ -19,14 +19,14 @@ serde_yaml = "0.9"
 
 Release notes are available under [GitHub releases].
 
-[GitHub releases]: https://github.com/dtolnay/serde-yaml/releases
+[GitHub releases]: https://github.com/sdf-labs/dbt-serde-yaml/releases
 
-## Using Serde YAML
+## Using dbt Serde YAML
 
 [API documentation is available in rustdoc form][docs.rs] but the general idea
 is:
 
-[docs.rs]: https://docs.rs/serde_yaml
+[docs.rs]: https://docs.rs/dbt-serde_yaml
 
 ```rust
 use std::collections::BTreeMap;
@@ -54,7 +54,7 @@ defined in your program.
 ```toml
 [dependencies]
 serde = { version = "1.0", features = ["derive"] }
-serde_yaml = "0.9"
+dbt-serde_yaml = "0.0.1"
 ```
 
 Structs serialize in the obvious way:
@@ -127,6 +127,31 @@ fn main() -> Result<(), dbt_serde_yaml::Error> {
     assert_eq!(values[0], Enum::Unit);
     assert_eq!(values[1], Enum::Unit);
 
+    Ok(())
+}
+```
+
+Code locations can be captured using the `Spanned` wrapper type.
+
+```rust
+use serde::{Serialize, Deserialize};
+use dbt_serde_yaml::Spanned;
+
+#[derive(Serialize, Deserialize, PartialEq, Debug)]
+struct Point {
+    x: Spanned<f64>,
+    y: Spanned<f64>,
+}
+
+fn main() -> Result<(), dbt_serde_yaml::Error> {
+    let yaml = "
+        x: 1.0
+        y: 2.0
+    ";
+    let point: Point = dbt_serde_yaml::from_str(yaml)?;
+    assert_eq!(*point.x, 2.0);
+    assert_eq!(yaml[point.x.span().start.index..point.x.span().end.index].trim(), "1.0");
+    assert_eq!(yaml[point.y.span().start.index..point.y.span().end.index].trim(), "2.0");
     Ok(())
 }
 ```
