@@ -4,6 +4,7 @@ use crate::libyaml::parser::{MappingStart, Scalar, ScalarStyle, SequenceStart};
 use crate::libyaml::tag::Tag;
 use crate::loader::{Document, Loader};
 use crate::path::Path;
+use crate::spanned;
 use serde::de::value::StrDeserializer;
 use serde::de::{
     self, Deserialize, DeserializeOwned, DeserializeSeed, Expected, IgnoredAny, Unexpected, Visitor,
@@ -464,11 +465,15 @@ impl<'de, 'document> DeserializerFromEvents<'de, 'document> {
     }
 
     fn next_event_mark(&mut self) -> Result<(&'document Event<'de>, Mark)> {
-        self.peek_event_mark().map(|(event, mark)| {
+        let res = self.peek_event_mark().map(|(event, mark)| {
             *self.pos += 1;
             self.current_enum = None;
             (event, mark)
-        })
+        });
+        if let Ok((_, mark)) = self.peek_event_mark() {
+            spanned::set_marker(mark);
+        }
+        res
     }
 
     fn jump<'anchor>(
@@ -1807,7 +1812,10 @@ pub fn from_str<'de, T>(s: &'de str) -> Result<T>
 where
     T: Deserialize<'de>,
 {
-    T::deserialize(Deserializer::from_str(s))
+    spanned::set_marker(spanned::Marker::zero());
+    let res = T::deserialize(Deserializer::from_str(s));
+    spanned::reset_marker();
+    res
 }
 
 /// Deserialize an instance of type `T` from an IO stream of YAML.
@@ -1824,7 +1832,10 @@ where
     R: io::Read,
     T: DeserializeOwned,
 {
-    T::deserialize(Deserializer::from_reader(rdr))
+    spanned::set_marker(spanned::Marker::zero());
+    let res = T::deserialize(Deserializer::from_reader(rdr));
+    spanned::reset_marker();
+    res
 }
 
 /// Deserialize an instance of type `T` from bytes of YAML text.
@@ -1840,5 +1851,8 @@ pub fn from_slice<'de, T>(v: &'de [u8]) -> Result<T>
 where
     T: Deserialize<'de>,
 {
-    T::deserialize(Deserializer::from_slice(v))
+    spanned::set_marker(spanned::Marker::zero());
+    let res = T::deserialize(Deserializer::from_slice(v));
+    spanned::reset_marker();
+    res
 }

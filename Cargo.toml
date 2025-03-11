@@ -1,10 +1,10 @@
 [package]
-name = "dbt_serde_yaml"
+name = "dbt-serde-yaml"
 version = "0.0.1"
 authors = ["Bo Lin <bo.lin@dbtlabs.com>", "David Tolnay <dtolnay@gmail.com>"]
 categories = ["encoding", "parser-implementations"]
 description = "YAML data format for Serde"
-documentation = "https://docs.rs/serde_yaml/"
+documentation = "https://docs.rs/dbt-serde-yaml/"
 edition = "2021"
 keywords = ["yaml", "serde", "serialization"]
 license = "MIT OR Apache-2.0"

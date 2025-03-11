@@ -2,6 +2,7 @@ use crate::de::{Event, Progress};
 use crate::error::{self, Error, ErrorImpl, Result};
 use crate::libyaml::error::Mark;
 use crate::libyaml::parser::{Event as YamlEvent, Parser};
+use crate::spanned;
 use std::borrow::Cow;
 use std::collections::BTreeMap;
 use std::sync::Arc;
@@ -77,8 +78,14 @@ impl<'input> Loader<'input> {
                         None
                     };
                 }
-                YamlEvent::DocumentStart => continue,
-                YamlEvent::DocumentEnd => return Some(document),
+                YamlEvent::DocumentStart => {
+                    spanned::set_marker(mark);
+                    continue;
+                }
+                YamlEvent::DocumentEnd => {
+                    document.events.push((Event::Void, mark));
+                    return Some(document);
+                }
                 YamlEvent::Alias(alias) => match anchors.get(&alias) {
                     Some(id) => Event::Alias(*id),
                     None => {
