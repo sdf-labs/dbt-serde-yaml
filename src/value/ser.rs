@@ -141,7 +141,7 @@ impl ser::Serializer for Serializer {
             .iter()
             .map(|&b| Value::number(Number::from(b)))
             .collect();
-        Ok(Value::Sequence(vec))
+        Ok(Value::sequence(vec))
     }
 
     fn serialize_unit(self) -> Result<Value> {
@@ -281,7 +281,7 @@ impl ser::SerializeSeq for SerializeArray {
     }
 
     fn end(self) -> Result<Value> {
-        Ok(Value::Sequence(self.sequence))
+        Ok(Value::sequence(self.sequence))
     }
 }
 
@@ -337,7 +337,7 @@ impl ser::SerializeTupleVariant for SerializeTupleVariant {
     fn end(self) -> Result<Value> {
         Ok(Value::Tagged(Box::new(TaggedValue {
             tag: Tag::new(self.tag),
-            value: Value::Sequence(self.sequence),
+            value: Value::sequence(self.sequence),
         })))
     }
 }

@@ -94,7 +94,7 @@ impl<'de> Deserialize<'de> for Value {
             {
                 let de = serde::de::value::SeqAccessDeserializer::new(data);
                 let sequence = Sequence::deserialize(de)?;
-                Ok(Value::Sequence(sequence))
+                Ok(Value::sequence(sequence))
             }
 
             fn visit_map<A>(self, data: A) -> Result<Value, A::Error>
@@ -345,7 +345,7 @@ impl<'de> Deserializer<'de> for Value {
     {
         match self.untag() {
             Value::String(v) => visitor.visit_string(v),
-            Value::Sequence(v) => visit_sequence(v, visitor),
+            Value::Sequence(v, ..) => visit_sequence(v, visitor),
             other => Err(other.invalid_type(&visitor)),
         }
     }
@@ -393,7 +393,7 @@ impl<'de> Deserializer<'de> for Value {
         V: Visitor<'de>,
     {
         match self.untag() {
-            Value::Sequence(v) => visit_sequence(v, visitor),
+            Value::Sequence(v, ..) => visit_sequence(v, visitor),
             Value::Null(..) => visit_sequence(Sequence::new(), visitor),
             other => Err(other.invalid_type(&visitor)),
         }
@@ -855,7 +855,7 @@ impl<'de> Deserializer<'de> for &'de Value {
     {
         match self.untag_ref() {
             Value::String(v) => visitor.visit_borrowed_str(v),
-            Value::Sequence(v) => visit_sequence_ref(v, visitor),
+            Value::Sequence(v, ..) => visit_sequence_ref(v, visitor),
             other => Err(other.invalid_type(&visitor)),
         }
     }
@@ -911,7 +911,7 @@ impl<'de> Deserializer<'de> for &'de Value {
     {
         static EMPTY: Sequence = Sequence::new();
         match self.untag_ref() {
-            Value::Sequence(v) => visit_sequence_ref(v, visitor),
+            Value::Sequence(v, ..) => visit_sequence_ref(v, visitor),
             Value::Null(..) => visit_sequence_ref(&EMPTY, visitor),
             other => Err(other.invalid_type(&visitor)),
         }

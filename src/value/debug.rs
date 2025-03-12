@@ -10,7 +10,7 @@ impl Debug for Value {
             Value::Bool(boolean, ..) => write!(formatter, "Bool({})", boolean),
             Value::Number(number, ..) => write!(formatter, "Number({})", number),
             Value::String(string) => write!(formatter, "String({:?})", string),
-            Value::Sequence(sequence) => {
+            Value::Sequence(sequence, ..) => {
                 formatter.write_str("Sequence ")?;
                 formatter.debug_list().entries(sequence).finish()
             }

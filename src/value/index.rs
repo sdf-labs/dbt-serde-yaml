@@ -28,22 +28,22 @@ pub trait Index: private::Sealed {
 impl Index for usize {
     fn index_into<'v>(&self, v: &'v Value) -> Option<&'v Value> {
         match v.untag_ref() {
-            Value::Sequence(vec) => vec.get(*self),
-            Value::Mapping(vec) => vec.get(Value::number((*self).into())),
+            Value::Sequence(vec, ..) => vec.get(*self),
+            Value::Mapping(vec, ..) => vec.get(Value::number((*self).into())),
             _ => None,
         }
     }
     fn index_into_mut<'v>(&self, v: &'v mut Value) -> Option<&'v mut Value> {
         match v.untag_mut() {
-            Value::Sequence(vec) => vec.get_mut(*self),
-            Value::Mapping(vec) => vec.get_mut(Value::number((*self).into())),
+            Value::Sequence(vec, ..) => vec.get_mut(*self),
+            Value::Mapping(vec, ..) => vec.get_mut(Value::number((*self).into())),
             _ => None,
         }
     }
     fn index_or_insert<'v>(&self, mut v: &'v mut Value) -> &'v mut Value {
         loop {
             match v {
-                Value::Sequence(vec) => {
+                Value::Sequence(vec, ..) => {
                     let len = vec.len();
                     return vec.get_mut(*self).unwrap_or_else(|| {
                         panic!(

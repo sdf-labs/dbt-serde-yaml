@@ -509,7 +509,7 @@ fn test_value() {
     }
     let thing = GenericInstructions {
         typ: "primary".to_string(),
-        config: Value::Sequence(vec![
+        config: Value::sequence(vec![
             Value::null(),
             Value::bool(true),
             Value::number(Number::from(65535)),

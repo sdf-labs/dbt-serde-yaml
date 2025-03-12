@@ -278,7 +278,7 @@ impl<'de> VariantAccess<'de> for Value {
     where
         V: Visitor<'de>,
     {
-        if let Value::Sequence(v) = self {
+        if let Value::Sequence(v, ..) = self {
             Deserializer::deserialize_any(SeqDeserializer::new(v), visitor)
         } else {
             Err(Error::invalid_type(self.unexpected(), &"tuple variant"))
@@ -357,7 +357,7 @@ impl<'de> VariantAccess<'de> for &'de Value {
     where
         V: Visitor<'de>,
     {
-        if let Value::Sequence(v) = self {
+        if let Value::Sequence(v, ..) = self {
             Deserializer::deserialize_any(SeqRefDeserializer::new(v), visitor)
         } else {
             Err(Error::invalid_type(self.unexpected(), &"tuple variant"))

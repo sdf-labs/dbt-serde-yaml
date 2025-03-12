@@ -35,7 +35,7 @@ pub enum Value {
     String(String),
     /// Represents a YAML sequence in which the elements are
     /// `dbt_serde_yaml::Value`.
-    Sequence(Sequence),
+    Sequence(Sequence, Span),
     /// Represents a YAML mapping in which the keys and values are both
     /// `dbt_serde_yaml::Value`.
     Mapping(Mapping),
@@ -50,7 +50,7 @@ impl PartialEq for Value {
             (Value::Bool(a, ..), Value::Bool(b, ..)) => a == b,
             (Value::Number(a, ..), Value::Number(b, ..)) => a == b,
             (Value::String(a), Value::String(b)) => a == b,
-            (Value::Sequence(a), Value::Sequence(b)) => a == b,
+            (Value::Sequence(a, ..), Value::Sequence(b, ..)) => a == b,
             (Value::Mapping(a), Value::Mapping(b)) => a == b,
             (Value::Tagged(a), Value::Tagged(b)) => a == b,
             _ => false,
@@ -65,7 +65,7 @@ impl PartialOrd for Value {
             (Value::Bool(a, ..), Value::Bool(b, ..)) => a.partial_cmp(b),
             (Value::Number(a, ..), Value::Number(b, ..)) => a.partial_cmp(b),
             (Value::String(a), Value::String(b)) => a.partial_cmp(b),
-            (Value::Sequence(a), Value::Sequence(b)) => a.partial_cmp(b),
+            (Value::Sequence(a, ..), Value::Sequence(b, ..)) => a.partial_cmp(b),
             (Value::Mapping(a), Value::Mapping(b)) => a.partial_cmp(b),
             (Value::Tagged(a), Value::Tagged(b)) => a.partial_cmp(b),
             _ => None,
@@ -530,7 +530,7 @@ impl Value {
     /// ```
     pub fn as_sequence(&self) -> Option<&Sequence> {
         match self.untag_ref() {
-            Value::Sequence(seq) => Some(seq),
+            Value::Sequence(seq, ..) => Some(seq),
             _ => None,
         }
     }
@@ -553,7 +553,7 @@ impl Value {
     /// ```
     pub fn as_sequence_mut(&mut self) -> Option<&mut Sequence> {
         match self.untag_mut() {
-            Value::Sequence(seq) => Some(seq),
+            Value::Sequence(seq, ..) => Some(seq),
             _ => None,
         }
     }
@@ -666,7 +666,7 @@ impl Value {
                                 mapping.entry(k).or_insert(v);
                             }
                         }
-                        Some(Value::Sequence(sequence)) => {
+                        Some(Value::Sequence(sequence, ..)) => {
                             for value in sequence {
                                 match value {
                                     Value::Mapping(merge) => {
@@ -674,7 +674,7 @@ impl Value {
                                             mapping.entry(k).or_insert(v);
                                         }
                                     }
-                                    Value::Sequence(_) => {
+                                    Value::Sequence(..) => {
                                         return Err(error::new(ErrorImpl::SequenceInMergeElement));
                                     }
                                     Value::Tagged(_) => {
@@ -692,7 +692,7 @@ impl Value {
                     }
                     stack.extend(mapping.values_mut());
                 }
-                Value::Sequence(sequence) => stack.extend(sequence),
+                Value::Sequence(sequence, ..) => stack.extend(sequence),
                 Value::Tagged(tagged) => stack.push(&mut tagged.value),
                 _ => {}
             }
@@ -703,9 +703,11 @@ impl Value {
     /// Returns the contained [Span].
     pub fn span(&self) -> Span {
         match self {
-            Value::Null(span) | Value::Bool(_, span) | Value::Number(_, span) => *span,
+            Value::Null(span)
+            | Value::Bool(_, span)
+            | Value::Number(_, span)
+            | Value::Sequence(_, span) => *span,
             Value::String(_) => Span::zero(),
-            Value::Sequence(_) => Span::zero(),
             Value::Mapping(_) => Span::zero(),
             Value::Tagged(_) => Span::zero(),
         }
@@ -715,11 +717,11 @@ impl Value {
     pub fn set_span(&mut self, span: impl Into<Span>) {
         let span = span.into();
         match self {
-            Value::Null(ref mut s) | Value::Bool(_, ref mut s) | Value::Number(_, ref mut s) => {
-                *s = span
-            }
+            Value::Null(ref mut s)
+            | Value::Bool(_, ref mut s)
+            | Value::Number(_, ref mut s)
+            | Value::Sequence(_, ref mut s) => *s = span,
             Value::String(_) => {}
-            Value::Sequence(_) => {}
             Value::Mapping(_) => {}
             Value::Tagged(_) => {}
         }
@@ -742,6 +744,11 @@ impl Value {
     pub fn number(n: Number) -> Value {
         Value::Number(n, Span::zero())
     }
+
+    /// Construct a Sequence Value.
+    pub fn sequence(seq: Sequence) -> Value {
+        Value::Sequence(seq, Span::zero())
+    }
 }
 
 impl Eq for Value {}
@@ -756,7 +763,7 @@ impl Hash for Value {
             Value::Bool(v, ..) => v.hash(state),
             Value::Number(v, ..) => v.hash(state),
             Value::String(v) => v.hash(state),
-            Value::Sequence(v) => v.hash(state),
+            Value::Sequence(v, ..) => v.hash(state),
             Value::Mapping(v) => v.hash(state),
             Value::Tagged(v) => v.hash(state),
         }
