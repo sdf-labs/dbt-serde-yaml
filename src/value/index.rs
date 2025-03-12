@@ -167,12 +167,12 @@ impl fmt::Display for Type<'_> {
     fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
         match self.0 {
             Value::Null(..) => formatter.write_str("null"),
-            Value::Bool(_) => formatter.write_str("boolean"),
-            Value::Number(_) => formatter.write_str("number"),
-            Value::String(_) => formatter.write_str("string"),
-            Value::Sequence(_) => formatter.write_str("sequence"),
-            Value::Mapping(_) => formatter.write_str("mapping"),
-            Value::Tagged(_) => unreachable!(),
+            Value::Bool(..) => formatter.write_str("boolean"),
+            Value::Number(..) => formatter.write_str("number"),
+            Value::String(..) => formatter.write_str("string"),
+            Value::Sequence(..) => formatter.write_str("sequence"),
+            Value::Mapping(..) => formatter.write_str("mapping"),
+            Value::Tagged(..) => unreachable!(),
         }
     }
 }

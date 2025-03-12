@@ -33,7 +33,7 @@ impl From<bool> for Value {
     /// let x: Value = b.into();
     /// ```
     fn from(f: bool) -> Self {
-        Value::Bool(f)
+        Value::Bool(f, Default::default())
     }
 }
 

@@ -196,7 +196,7 @@ pub fn reset_marker() {
 
 /// Get the current source location marker.
 pub(crate) fn get_marker() -> Option<Marker> {
-    MARKER.with(|m| m.borrow().clone())
+    MARKER.with(|m| *m.borrow())
 }
 
 thread_local! {

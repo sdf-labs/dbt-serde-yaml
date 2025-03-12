@@ -28,7 +28,7 @@ pub enum Value {
     /// Represents a YAML null value.
     Null(Span),
     /// Represents a YAML boolean.
-    Bool(bool),
+    Bool(bool, Span),
     /// Represents a YAML numerical value, whether integer or floating point.
     Number(Number),
     /// Represents a YAML string.
@@ -47,7 +47,7 @@ impl PartialEq for Value {
     fn eq(&self, other: &Value) -> bool {
         match (self, other) {
             (Value::Null(..), Value::Null(..)) => true,
-            (Value::Bool(a), Value::Bool(b)) => a == b,
+            (Value::Bool(a, ..), Value::Bool(b, ..)) => a == b,
             (Value::Number(a), Value::Number(b)) => a == b,
             (Value::String(a), Value::String(b)) => a == b,
             (Value::Sequence(a), Value::Sequence(b)) => a == b,
@@ -62,7 +62,7 @@ impl PartialOrd for Value {
     fn partial_cmp(&self, other: &Value) -> Option<std::cmp::Ordering> {
         match (self, other) {
             (Value::Null(..), Value::Null(..)) => Some(std::cmp::Ordering::Equal),
-            (Value::Bool(a), Value::Bool(b)) => a.partial_cmp(b),
+            (Value::Bool(a, ..), Value::Bool(b, ..)) => a.partial_cmp(b),
             (Value::Number(a), Value::Number(b)) => a.partial_cmp(b),
             (Value::String(a), Value::String(b)) => a.partial_cmp(b),
             (Value::Sequence(a), Value::Sequence(b)) => a.partial_cmp(b),
@@ -200,7 +200,7 @@ impl Value {
     /// assert_eq!(object["D"], Value::null());
     /// assert_eq!(object[0]["x"]["y"]["z"], Value::null());
     ///
-    /// assert_eq!(object[42], Value::Bool(true));
+    /// assert_eq!(object[42], Value::bool(true));
     /// # Ok(())
     /// # }
     /// ```
@@ -300,7 +300,7 @@ impl Value {
     /// ```
     pub fn as_bool(&self) -> Option<bool> {
         match self.untag_ref() {
-            Value::Bool(b) => Some(*b),
+            Value::Bool(b, ..) => Some(*b),
             _ => None,
         }
     }
@@ -703,8 +703,7 @@ impl Value {
     /// Returns the contained [Span].
     pub fn span(&self) -> Span {
         match self {
-            Value::Null(span) => *span,
-            Value::Bool(_) => Span::zero(),
+            Value::Null(span) | Value::Bool(_, span) => *span,
             Value::Number(_) => Span::zero(),
             Value::String(_) => Span::zero(),
             Value::Sequence(_) => Span::zero(),
@@ -717,8 +716,7 @@ impl Value {
     pub fn set_span(&mut self, span: impl Into<Span>) {
         let span = span.into();
         match self {
-            Value::Null(ref mut s) => *s = span,
-            Value::Bool(_) => {}
+            Value::Null(ref mut s) | Value::Bool(_, ref mut s) => *s = span,
             Value::Number(_) => {}
             Value::String(_) => {}
             Value::Sequence(_) => {}
@@ -734,6 +732,11 @@ impl Value {
     pub const fn null() -> Value {
         Value::Null(Span::zero())
     }
+
+    /// Construct a Bool Value.
+    pub fn bool(b: bool) -> Value {
+        Value::Bool(b, Span::zero())
+    }
 }
 
 impl Eq for Value {}
@@ -745,7 +748,7 @@ impl Hash for Value {
         mem::discriminant(self).hash(state);
         match self {
             Value::Null(..) => {}
-            Value::Bool(v) => v.hash(state),
+            Value::Bool(v, ..) => v.hash(state),
             Value::Number(v) => v.hash(state),
             Value::String(v) => v.hash(state),
             Value::Sequence(v) => v.hash(state),

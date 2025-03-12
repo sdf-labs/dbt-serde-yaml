@@ -511,7 +511,7 @@ fn test_value() {
         typ: "primary".to_string(),
         config: Value::Sequence(vec![
             Value::null(),
-            Value::Bool(true),
+            Value::bool(true),
             Value::Number(Number::from(65535)),
             Value::Number(Number::from(0.54321)),
             Value::String("s".into()),

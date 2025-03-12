@@ -4,9 +4,10 @@ use std::fmt::{self, Debug, Display};
 
 impl Debug for Value {
     fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        // TODO: print the span as well
         match self {
             Value::Null(..) => formatter.write_str("Null"),
-            Value::Bool(boolean) => write!(formatter, "Bool({})", boolean),
+            Value::Bool(boolean, ..) => write!(formatter, "Bool({})", boolean),
             Value::Number(number) => write!(formatter, "Number({})", number),
             Value::String(string) => write!(formatter, "String({:?})", string),
             Value::Sequence(sequence) => {
@@ -41,12 +42,12 @@ impl Debug for Mapping {
             let tmp;
             debug.entry(
                 match k {
-                    Value::Bool(boolean) => boolean,
-                    Value::Number(number) => {
+                    Value::Bool(boolean, ..) => boolean,
+                    Value::Number(number, ..) => {
                         tmp = DisplayNumber(number);
                         &tmp
                     }
-                    Value::String(string) => string,
+                    Value::String(string, ..) => string,
                     _ => k,
                 },
                 v,

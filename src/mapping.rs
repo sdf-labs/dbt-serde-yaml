@@ -411,9 +411,9 @@ impl PartialOrd for Mapping {
                 (Value::Null(..), _) => Ordering::Less,
                 (_, Value::Null(..)) => Ordering::Greater,
 
-                (Value::Bool(a), Value::Bool(b)) => a.cmp(b),
-                (Value::Bool(_), _) => Ordering::Less,
-                (_, Value::Bool(_)) => Ordering::Greater,
+                (Value::Bool(a, ..), Value::Bool(b, ..)) => a.cmp(b),
+                (Value::Bool(..), _) => Ordering::Less,
+                (_, Value::Bool(..)) => Ordering::Greater,
 
                 (Value::Number(a), Value::Number(b)) => a.total_cmp(b),
                 (Value::Number(_), _) => Ordering::Less,
@@ -840,10 +840,10 @@ impl Display for DuplicateKeyError<'_> {
         formatter.write_str("duplicate entry ")?;
         match self.entry.key() {
             Value::Null(..) => formatter.write_str("with null key"),
-            Value::Bool(boolean) => write!(formatter, "with key `{}`", boolean),
-            Value::Number(number) => write!(formatter, "with key {}", number),
-            Value::String(string) => write!(formatter, "with key {:?}", string),
-            Value::Sequence(_) | Value::Mapping(_) | Value::Tagged(_) => {
+            Value::Bool(boolean, ..) => write!(formatter, "with key `{}`", boolean),
+            Value::Number(number, ..) => write!(formatter, "with key {}", number),
+            Value::String(string, ..) => write!(formatter, "with key {:?}", string),
+            Value::Sequence(..) | Value::Mapping(..) | Value::Tagged(..) => {
                 formatter.write_str("in YAML map")
             }
         }

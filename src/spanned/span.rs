@@ -1,9 +1,10 @@
+use std::fmt::{self, Debug, Display};
 use std::ops::Range;
 
 use crate::libyaml::error::Mark;
 
 /// A source span.
-#[derive(Clone, Copy, Debug, PartialEq, PartialOrd)]
+#[derive(Clone, Copy, PartialEq, PartialOrd)]
 pub struct Span {
     /// The start of the span.
     pub start: Marker,
@@ -42,6 +43,18 @@ impl Default for Span {
     }
 }
 
+impl Debug for Span {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{:?}..{:?}", self.start, self.end)
+    }
+}
+
+impl Display for Span {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}..{}", self.start, self.end)
+    }
+}
+
 impl From<(Marker, Marker)> for Span {
     fn from((start, end): (Marker, Marker)) -> Self {
         Span { start, end }
@@ -63,7 +76,7 @@ impl From<Span> for Range<Option<usize>> {
 }
 
 /// A location in the source string.
-#[derive(Copy, Clone, Debug, PartialEq, PartialOrd)]
+#[derive(Copy, Clone, PartialEq, PartialOrd)]
 pub struct Marker {
     /// Offset in bytes from the start of the source string.
     pub index: usize,
@@ -118,5 +131,17 @@ impl From<Mark> for Marker {
             line: mark.line() as usize + 1,
             column: mark.column() as usize + 1,
         }
+    }
+}
+
+impl Debug for Marker {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}:{}[{}]", self.line, self.column, self.index)
+    }
+}
+
+impl Display for Marker {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}:{}", self.line, self.column)
     }
 }

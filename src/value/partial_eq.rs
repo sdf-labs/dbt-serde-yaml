@@ -49,7 +49,7 @@ impl PartialEq<bool> for Value {
     ///
     /// ```
     /// # use dbt_serde_yaml::Value;
-    /// assert!(Value::Bool(true) == true);
+    /// assert!(Value::bool(true) == true);
     /// ```
     fn eq(&self, other: &bool) -> bool {
         self.as_bool() == Some(*other)

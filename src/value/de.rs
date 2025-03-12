@@ -29,7 +29,7 @@ impl<'de> Deserialize<'de> for Value {
             where
                 E: de::Error,
             {
-                Ok(Value::Bool(b))
+                Ok(Value::bool(b))
             }
 
             fn visit_i64<E>(self, i: i64) -> Result<Value, E>
@@ -205,12 +205,12 @@ impl<'de> Deserializer<'de> for Value {
     {
         match self {
             Value::Null(..) => visitor.visit_unit(),
-            Value::Bool(v) => visitor.visit_bool(v),
-            Value::Number(n) => n.deserialize_any(visitor),
-            Value::String(v) => visitor.visit_string(v),
-            Value::Sequence(v) => visit_sequence(v, visitor),
-            Value::Mapping(v) => visit_mapping(v, visitor),
-            Value::Tagged(tagged) => visitor.visit_enum(*tagged),
+            Value::Bool(v, ..) => visitor.visit_bool(v),
+            Value::Number(n, ..) => n.deserialize_any(visitor),
+            Value::String(v, ..) => visitor.visit_string(v),
+            Value::Sequence(v, ..) => visit_sequence(v, visitor),
+            Value::Mapping(v, ..) => visit_mapping(v, visitor),
+            Value::Tagged(tagged, ..) => visitor.visit_enum(*tagged),
         }
     }
 
@@ -219,7 +219,7 @@ impl<'de> Deserializer<'de> for Value {
         V: Visitor<'de>,
     {
         match self.untag() {
-            Value::Bool(v) => visitor.visit_bool(v),
+            Value::Bool(v, ..) => visitor.visit_bool(v),
             other => Err(other.invalid_type(&visitor)),
         }
     }
@@ -722,12 +722,12 @@ impl<'de> Deserializer<'de> for &'de Value {
     {
         match self {
             Value::Null(..) => visitor.visit_unit(),
-            Value::Bool(v) => visitor.visit_bool(*v),
-            Value::Number(n) => n.deserialize_any(visitor),
-            Value::String(v) => visitor.visit_borrowed_str(v),
-            Value::Sequence(v) => visit_sequence_ref(v, visitor),
-            Value::Mapping(v) => visit_mapping_ref(v, visitor),
-            Value::Tagged(tagged) => visitor.visit_enum(&**tagged),
+            Value::Bool(v, ..) => visitor.visit_bool(*v),
+            Value::Number(n, ..) => n.deserialize_any(visitor),
+            Value::String(v, ..) => visitor.visit_borrowed_str(v),
+            Value::Sequence(v, ..) => visit_sequence_ref(v, visitor),
+            Value::Mapping(v, ..) => visit_mapping_ref(v, visitor),
+            Value::Tagged(tagged, ..) => visitor.visit_enum(&**tagged),
         }
     }
 
@@ -736,7 +736,7 @@ impl<'de> Deserializer<'de> for &'de Value {
         V: Visitor<'de>,
     {
         match self.untag_ref() {
-            Value::Bool(v) => visitor.visit_bool(*v),
+            Value::Bool(v, ..) => visitor.visit_bool(*v),
             other => Err(other.invalid_type(&visitor)),
         }
     }
@@ -1235,12 +1235,12 @@ impl Value {
     pub(crate) fn unexpected(&self) -> Unexpected {
         match self {
             Value::Null(..) => Unexpected::Unit,
-            Value::Bool(b) => Unexpected::Bool(*b),
-            Value::Number(n) => number::unexpected(n),
-            Value::String(s) => Unexpected::Str(s),
-            Value::Sequence(_) => Unexpected::Seq,
-            Value::Mapping(_) => Unexpected::Map,
-            Value::Tagged(_) => Unexpected::Enum,
+            Value::Bool(b, ..) => Unexpected::Bool(*b),
+            Value::Number(n, ..) => number::unexpected(n),
+            Value::String(s, ..) => Unexpected::Str(s),
+            Value::Sequence(..) => Unexpected::Seq,
+            Value::Mapping(..) => Unexpected::Map,
+            Value::Tagged(..) => Unexpected::Enum,
         }
     }
 }

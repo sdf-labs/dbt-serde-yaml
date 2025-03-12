@@ -15,11 +15,11 @@ impl Serialize for Value {
     {
         match self {
             Value::Null(..) => serializer.serialize_unit(),
-            Value::Bool(b) => serializer.serialize_bool(*b),
-            Value::Number(n) => n.serialize(serializer),
-            Value::String(s) => serializer.serialize_str(s),
-            Value::Sequence(seq) => seq.serialize(serializer),
-            Value::Mapping(mapping) => {
+            Value::Bool(b, ..) => serializer.serialize_bool(*b),
+            Value::Number(n, ..) => n.serialize(serializer),
+            Value::String(s, ..) => serializer.serialize_str(s),
+            Value::Sequence(seq, ..) => seq.serialize(serializer),
+            Value::Mapping(mapping, ..) => {
                 use serde::ser::SerializeMap;
                 let mut map = serializer.serialize_map(Some(mapping.len()))?;
                 for (k, v) in mapping {
@@ -27,7 +27,7 @@ impl Serialize for Value {
                 }
                 map.end()
             }
-            Value::Tagged(tagged) => tagged.serialize(serializer),
+            Value::Tagged(tagged, ..) => tagged.serialize(serializer),
         }
     }
 }
@@ -67,7 +67,7 @@ impl ser::Serializer for Serializer {
     type SerializeStructVariant = SerializeStructVariant;
 
     fn serialize_bool(self, v: bool) -> Result<Value> {
-        Ok(Value::Bool(v))
+        Ok(Value::bool(v))
     }
 
     fn serialize_i8(self, v: i8) -> Result<Value> {
