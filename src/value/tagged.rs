@@ -94,7 +94,7 @@ impl Tag {
 impl Value {
     pub(crate) fn untag(self) -> Self {
         let mut cur = self;
-        while let Value::Tagged(tagged) = cur {
+        while let Value::Tagged(tagged, ..) = cur {
             cur = tagged.value;
         }
         cur
@@ -102,7 +102,7 @@ impl Value {
 
     pub(crate) fn untag_ref(&self) -> &Self {
         let mut cur = self;
-        while let Value::Tagged(tagged) = cur {
+        while let Value::Tagged(tagged, ..) = cur {
             cur = &tagged.value;
         }
         cur
@@ -110,7 +110,7 @@ impl Value {
 
     pub(crate) fn untag_mut(&mut self) -> &mut Self {
         let mut cur = self;
-        while let Value::Tagged(tagged) = cur {
+        while let Value::Tagged(tagged, ..) = cur {
             cur = &mut tagged.value;
         }
         cur

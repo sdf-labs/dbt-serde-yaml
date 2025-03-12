@@ -56,7 +56,7 @@ impl Index for usize {
                     let n = Value::number((*self).into());
                     return map.entry(n).or_insert(Value::null());
                 }
-                Value::Tagged(tagged) => v = &mut tagged.value,
+                Value::Tagged(tagged, ..) => v = &mut tagged.value,
                 _ => panic!("cannot access index {} of YAML {}", self, Type(v)),
             }
         }
@@ -103,7 +103,7 @@ where
             Value::Mapping(map, ..) => {
                 return map.entry(index.to_owned().into()).or_insert(Value::null());
             }
-            Value::Tagged(tagged) => v = &mut tagged.value,
+            Value::Tagged(tagged, ..) => v = &mut tagged.value,
             _ => panic!("cannot access key {:?} in YAML {}", index, Type(v)),
         }
     }

@@ -57,14 +57,14 @@ impl<'de> Deserialize<'de> for Value {
             where
                 E: de::Error,
             {
-                Ok(Value::String(s.to_owned()))
+                Ok(Value::string(s.to_owned()))
             }
 
             fn visit_string<E>(self, s: String) -> Result<Value, E>
             where
                 E: de::Error,
             {
-                Ok(Value::String(s))
+                Ok(Value::string(s))
             }
 
             fn visit_unit<E>(self) -> Result<Value, E>
@@ -112,7 +112,7 @@ impl<'de> Deserialize<'de> for Value {
             {
                 let (tag, contents) = data.variant_seed(TagStringVisitor)?;
                 let value = contents.newtype_variant()?;
-                Ok(Value::Tagged(Box::new(TaggedValue { tag, value })))
+                Ok(Value::tagged(TaggedValue { tag, value }))
             }
         }
 
@@ -327,7 +327,7 @@ impl<'de> Deserializer<'de> for Value {
         V: Visitor<'de>,
     {
         match self.untag() {
-            Value::String(v) => visitor.visit_string(v),
+            Value::String(v, ..) => visitor.visit_string(v),
             other => Err(other.invalid_type(&visitor)),
         }
     }
@@ -344,7 +344,7 @@ impl<'de> Deserializer<'de> for Value {
         V: Visitor<'de>,
     {
         match self.untag() {
-            Value::String(v) => visitor.visit_string(v),
+            Value::String(v, ..) => visitor.visit_string(v),
             Value::Sequence(v, ..) => visit_sequence(v, visitor),
             other => Err(other.invalid_type(&visitor)),
         }
@@ -452,14 +452,14 @@ impl<'de> Deserializer<'de> for Value {
     {
         let tag;
         visitor.visit_enum(match self {
-            Value::Tagged(tagged) => EnumDeserializer {
+            Value::Tagged(tagged, ..) => EnumDeserializer {
                 tag: {
                     tag = tagged.tag.string;
                     tagged::nobang(&tag)
                 },
                 value: Some(tagged.value),
             },
-            Value::String(variant) => EnumDeserializer {
+            Value::String(variant, ..) => EnumDeserializer {
                 tag: {
                     tag = variant;
                     &tag
@@ -837,7 +837,7 @@ impl<'de> Deserializer<'de> for &'de Value {
         V: Visitor<'de>,
     {
         match self.untag_ref() {
-            Value::String(v) => visitor.visit_borrowed_str(v),
+            Value::String(v, ..) => visitor.visit_borrowed_str(v),
             other => Err(other.invalid_type(&visitor)),
         }
     }
@@ -854,7 +854,7 @@ impl<'de> Deserializer<'de> for &'de Value {
         V: Visitor<'de>,
     {
         match self.untag_ref() {
-            Value::String(v) => visitor.visit_borrowed_str(v),
+            Value::String(v, ..) => visitor.visit_borrowed_str(v),
             Value::Sequence(v, ..) => visit_sequence_ref(v, visitor),
             other => Err(other.invalid_type(&visitor)),
         }
@@ -972,11 +972,11 @@ impl<'de> Deserializer<'de> for &'de Value {
         V: Visitor<'de>,
     {
         visitor.visit_enum(match self {
-            Value::Tagged(tagged) => EnumRefDeserializer {
+            Value::Tagged(tagged, ..) => EnumRefDeserializer {
                 tag: tagged::nobang(&tagged.tag.string),
                 value: Some(&tagged.value),
             },
-            Value::String(variant) => EnumRefDeserializer {
+            Value::String(variant, ..) => EnumRefDeserializer {
                 tag: variant,
                 value: None,
             },

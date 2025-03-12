@@ -269,7 +269,7 @@ struct HashLikeValue<'a>(&'a str);
 impl indexmap::Equivalent<Value> for HashLikeValue<'_> {
     fn equivalent(&self, key: &Value) -> bool {
         match key {
-            Value::String(string) => self.0 == string,
+            Value::String(string, ..) => self.0 == string,
             _ => false,
         }
     }
@@ -278,7 +278,7 @@ impl indexmap::Equivalent<Value> for HashLikeValue<'_> {
 // NOTE: This impl must be consistent with Value's Hash impl.
 impl Hash for HashLikeValue<'_> {
     fn hash<H: Hasher>(&self, state: &mut H) {
-        const STRING: Value = Value::String(String::new());
+        const STRING: Value = Value::string(String::new());
         mem::discriminant(&STRING).hash(state);
         self.0.hash(state);
     }
@@ -419,7 +419,7 @@ impl PartialOrd for Mapping {
                 (Value::Number(..), _) => Ordering::Less,
                 (_, Value::Number(..)) => Ordering::Greater,
 
-                (Value::String(a), Value::String(b)) => a.cmp(b),
+                (Value::String(a, ..), Value::String(b, ..)) => a.cmp(b),
                 (Value::String(..), _) => Ordering::Less,
                 (_, Value::String(..)) => Ordering::Greater,
 
@@ -435,7 +435,7 @@ impl PartialOrd for Mapping {
                 (Value::Mapping(..), _) => Ordering::Less,
                 (_, Value::Mapping(..)) => Ordering::Greater,
 
-                (Value::Tagged(a), Value::Tagged(b)) => a
+                (Value::Tagged(a, ..), Value::Tagged(b, ..)) => a
                     .tag
                     .cmp(&b.tag)
                     .then_with(|| total_cmp(&a.value, &b.value)),

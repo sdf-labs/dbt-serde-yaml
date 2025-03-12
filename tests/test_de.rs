@@ -338,12 +338,12 @@ fn test_de_mapping() {
         substructure: dbt_serde_yaml::Mapping::new(),
     };
     expected.substructure.insert(
-        dbt_serde_yaml::Value::String("a".to_owned()),
-        dbt_serde_yaml::Value::String("foo".to_owned()),
+        dbt_serde_yaml::Value::string("a".to_owned()),
+        dbt_serde_yaml::Value::string("foo".to_owned()),
     );
     expected.substructure.insert(
-        dbt_serde_yaml::Value::String("b".to_owned()),
-        dbt_serde_yaml::Value::String("bar".to_owned()),
+        dbt_serde_yaml::Value::string("b".to_owned()),
+        dbt_serde_yaml::Value::string("bar".to_owned()),
     );
 
     test_de(yaml, &expected);
@@ -444,7 +444,7 @@ fn test_numbers() {
     for yaml in &cases {
         let value = dbt_serde_yaml::from_str::<Value>(yaml).unwrap();
         match value {
-            Value::String(string) => assert_eq!(string, *yaml),
+            Value::String(string, ..) => assert_eq!(string, *yaml),
             _ => panic!("expected string. input={:?}, result={:?}", yaml, value),
         }
     }
@@ -667,22 +667,22 @@ fn test_tag_resolution() {
         Value::bool(false),
         Value::bool(false),
         Value::bool(false),
-        Value::String("y".to_owned()),
-        Value::String("Y".to_owned()),
-        Value::String("yes".to_owned()),
-        Value::String("Yes".to_owned()),
-        Value::String("YES".to_owned()),
-        Value::String("n".to_owned()),
-        Value::String("N".to_owned()),
-        Value::String("no".to_owned()),
-        Value::String("No".to_owned()),
-        Value::String("NO".to_owned()),
-        Value::String("on".to_owned()),
-        Value::String("On".to_owned()),
-        Value::String("ON".to_owned()),
-        Value::String("off".to_owned()),
-        Value::String("Off".to_owned()),
-        Value::String("OFF".to_owned()),
+        Value::string("y".to_owned()),
+        Value::string("Y".to_owned()),
+        Value::string("yes".to_owned()),
+        Value::string("Yes".to_owned()),
+        Value::string("YES".to_owned()),
+        Value::string("n".to_owned()),
+        Value::string("N".to_owned()),
+        Value::string("no".to_owned()),
+        Value::string("No".to_owned()),
+        Value::string("NO".to_owned()),
+        Value::string("on".to_owned()),
+        Value::string("On".to_owned()),
+        Value::string("ON".to_owned()),
+        Value::string("off".to_owned()),
+        Value::string("Off".to_owned()),
+        Value::string("OFF".to_owned()),
     ];
 
     test_de(yaml, &expected);

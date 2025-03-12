@@ -199,13 +199,13 @@ fn test_serialize_nested_enum() {
     let error = dbt_serde_yaml::to_string(&e).unwrap_err();
     assert_eq!(error.to_string(), expected);
 
-    let e = Value::Tagged(Box::new(TaggedValue {
+    let e = Value::tagged(TaggedValue {
         tag: Tag::new("Outer"),
-        value: Value::Tagged(Box::new(TaggedValue {
+        value: Value::tagged(TaggedValue {
             tag: Tag::new("Inner"),
             value: Value::null(),
-        })),
-    }));
+        }),
+    });
     let error = dbt_serde_yaml::to_string(&e).unwrap_err();
     assert_eq!(error.to_string(), expected);
 }

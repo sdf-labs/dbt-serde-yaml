@@ -7,7 +7,7 @@ impl PartialEq<str> for Value {
     ///
     /// ```
     /// # use dbt_serde_yaml::Value;
-    /// assert!(Value::String("lorem".into()) == *"lorem");
+    /// assert!(Value::string("lorem".into()) == *"lorem");
     /// ```
     fn eq(&self, other: &str) -> bool {
         self.as_str() == Some(other)
@@ -21,7 +21,7 @@ impl PartialEq<&str> for Value {
     ///
     /// ```
     /// # use dbt_serde_yaml::Value;
-    /// assert!(Value::String("lorem".into()) == "lorem");
+    /// assert!(Value::string("lorem".into()) == "lorem");
     /// ```
     fn eq(&self, other: &&str) -> bool {
         self.as_str() == Some(*other)
@@ -35,7 +35,7 @@ impl PartialEq<String> for Value {
     ///
     /// ```
     /// # use dbt_serde_yaml::Value;
-    /// assert!(Value::String("lorem".into()) == "lorem".to_string());
+    /// assert!(Value::string("lorem".into()) == "lorem".to_string());
     /// ```
     fn eq(&self, other: &String) -> bool {
         self.as_str() == Some(other.as_str())
