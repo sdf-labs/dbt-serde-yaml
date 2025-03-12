@@ -52,7 +52,7 @@ impl Index for usize {
                         )
                     });
                 }
-                Value::Mapping(map) => {
+                Value::Mapping(map, ..) => {
                     let n = Value::number((*self).into());
                     return map.entry(n).or_insert(Value::null());
                 }
@@ -68,7 +68,7 @@ where
     I: ?Sized + mapping::Index,
 {
     match v.untag_ref() {
-        Value::Mapping(map) => map.get(index),
+        Value::Mapping(map, ..) => map.get(index),
         _ => None,
     }
 }
@@ -78,7 +78,7 @@ where
     I: ?Sized + mapping::Index,
 {
     match v.untag_mut() {
-        Value::Mapping(map) => map.get_mut(index),
+        Value::Mapping(map, ..) => map.get_mut(index),
         _ => None,
     }
 }
@@ -89,9 +89,9 @@ where
     Value: From<I::Owned>,
 {
     if let Value::Null(..) = *v {
-        *v = Value::Mapping(Mapping::new());
+        *v = Value::mapping(Mapping::new());
         return match v {
-            Value::Mapping(map) => match map.entry(index.to_owned().into()) {
+            Value::Mapping(map, ..) => match map.entry(index.to_owned().into()) {
                 Entry::Vacant(entry) => entry.insert(Value::null()),
                 Entry::Occupied(_) => unreachable!(),
             },
@@ -100,7 +100,7 @@ where
     }
     loop {
         match v {
-            Value::Mapping(map) => {
+            Value::Mapping(map, ..) => {
                 return map.entry(index.to_owned().into()).or_insert(Value::null());
             }
             Value::Tagged(tagged) => v = &mut tagged.value,

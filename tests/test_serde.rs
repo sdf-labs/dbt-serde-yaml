@@ -515,7 +515,7 @@ fn test_value() {
             Value::number(Number::from(65535)),
             Value::number(Number::from(0.54321)),
             Value::String("s".into()),
-            Value::Mapping(Mapping::new()),
+            Value::mapping(Mapping::new()),
         ]),
     };
     let yaml = indoc! {"

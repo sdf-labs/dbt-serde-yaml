@@ -38,7 +38,7 @@ pub enum Value {
     Sequence(Sequence, Span),
     /// Represents a YAML mapping in which the keys and values are both
     /// `dbt_serde_yaml::Value`.
-    Mapping(Mapping),
+    Mapping(Mapping, Span),
     /// A representation of YAML's `!Tag` syntax, used for enums.
     Tagged(Box<TaggedValue>),
 }
@@ -51,7 +51,7 @@ impl PartialEq for Value {
             (Value::Number(a, ..), Value::Number(b, ..)) => a == b,
             (Value::String(a), Value::String(b)) => a == b,
             (Value::Sequence(a, ..), Value::Sequence(b, ..)) => a == b,
-            (Value::Mapping(a), Value::Mapping(b)) => a == b,
+            (Value::Mapping(a, ..), Value::Mapping(b, ..)) => a == b,
             (Value::Tagged(a), Value::Tagged(b)) => a == b,
             _ => false,
         }
@@ -66,7 +66,7 @@ impl PartialOrd for Value {
             (Value::Number(a, ..), Value::Number(b, ..)) => a.partial_cmp(b),
             (Value::String(a), Value::String(b)) => a.partial_cmp(b),
             (Value::Sequence(a, ..), Value::Sequence(b, ..)) => a.partial_cmp(b),
-            (Value::Mapping(a), Value::Mapping(b)) => a.partial_cmp(b),
+            (Value::Mapping(a, ..), Value::Mapping(b, ..)) => a.partial_cmp(b),
             (Value::Tagged(a), Value::Tagged(b)) => a.partial_cmp(b),
             _ => None,
         }
@@ -595,7 +595,7 @@ impl Value {
     /// ```
     pub fn as_mapping(&self) -> Option<&Mapping> {
         match self.untag_ref() {
-            Value::Mapping(map) => Some(map),
+            Value::Mapping(map, ..) => Some(map),
             _ => None,
         }
     }
@@ -623,7 +623,7 @@ impl Value {
     /// ```
     pub fn as_mapping_mut(&mut self) -> Option<&mut Mapping> {
         match self.untag_mut() {
-            Value::Mapping(map) => Some(map),
+            Value::Mapping(map, ..) => Some(map),
             _ => None,
         }
     }
@@ -659,9 +659,9 @@ impl Value {
         stack.push(self);
         while let Some(node) = stack.pop() {
             match node {
-                Value::Mapping(mapping) => {
+                Value::Mapping(mapping, ..) => {
                     match mapping.remove("<<") {
-                        Some(Value::Mapping(merge)) => {
+                        Some(Value::Mapping(merge, ..)) => {
                             for (k, v) in merge {
                                 mapping.entry(k).or_insert(v);
                             }
@@ -669,7 +669,7 @@ impl Value {
                         Some(Value::Sequence(sequence, ..)) => {
                             for value in sequence {
                                 match value {
-                                    Value::Mapping(merge) => {
+                                    Value::Mapping(merge, ..) => {
                                         for (k, v) in merge {
                                             mapping.entry(k).or_insert(v);
                                         }
@@ -706,10 +706,10 @@ impl Value {
             Value::Null(span)
             | Value::Bool(_, span)
             | Value::Number(_, span)
-            | Value::Sequence(_, span) => *span,
-            Value::String(_) => Span::zero(),
-            Value::Mapping(_) => Span::zero(),
+            | Value::Sequence(_, span)
+            | Value::Mapping(_, span) => *span,
             Value::Tagged(_) => Span::zero(),
+            Value::String(_) => Span::zero(),
         }
     }
 
@@ -720,10 +720,10 @@ impl Value {
             Value::Null(ref mut s)
             | Value::Bool(_, ref mut s)
             | Value::Number(_, ref mut s)
-            | Value::Sequence(_, ref mut s) => *s = span,
-            Value::String(_) => {}
-            Value::Mapping(_) => {}
+            | Value::Sequence(_, ref mut s)
+            | Value::Mapping(_, ref mut s) => *s = span,
             Value::Tagged(_) => {}
+            Value::String(_) => {}
         }
     }
 }
@@ -749,6 +749,11 @@ impl Value {
     pub fn sequence(seq: Sequence) -> Value {
         Value::Sequence(seq, Span::zero())
     }
+
+    /// Construct a Mapping Value.
+    pub fn mapping(map: Mapping) -> Value {
+        Value::Mapping(map, Span::zero())
+    }
 }
 
 impl Eq for Value {}
@@ -764,7 +769,7 @@ impl Hash for Value {
             Value::Number(v, ..) => v.hash(state),
             Value::String(v) => v.hash(state),
             Value::Sequence(v, ..) => v.hash(state),
-            Value::Mapping(v) => v.hash(state),
+            Value::Mapping(v, ..) => v.hash(state),
             Value::Tagged(v) => v.hash(state),
         }
     }

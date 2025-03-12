@@ -109,7 +109,7 @@ impl From<Mapping> for Value {
     /// let x: Value = m.into();
     /// ```
     fn from(f: Mapping) -> Self {
-        Value::Mapping(f)
+        Value::mapping(f)
     }
 }
 

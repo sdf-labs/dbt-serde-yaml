@@ -103,7 +103,7 @@ impl<'de> Deserialize<'de> for Value {
             {
                 let de = serde::de::value::MapAccessDeserializer::new(data);
                 let mapping = Mapping::deserialize(de)?;
-                Ok(Value::Mapping(mapping))
+                Ok(Value::mapping(mapping))
             }
 
             fn visit_enum<A>(self, data: A) -> Result<Self::Value, A::Error>
@@ -423,7 +423,7 @@ impl<'de> Deserializer<'de> for Value {
         V: Visitor<'de>,
     {
         match self.untag() {
-            Value::Mapping(v) => visit_mapping(v, visitor),
+            Value::Mapping(v, ..) => visit_mapping(v, visitor),
             Value::Null(..) => visit_mapping(Mapping::new(), visitor),
             other => Err(other.invalid_type(&visitor)),
         }
@@ -941,7 +941,7 @@ impl<'de> Deserializer<'de> for &'de Value {
         V: Visitor<'de>,
     {
         match self.untag_ref() {
-            Value::Mapping(v) => visit_mapping_ref(v, visitor),
+            Value::Mapping(v, ..) => visit_mapping_ref(v, visitor),
             Value::Null(..) => visitor.visit_map(&mut MapRefDeserializer {
                 iter: None,
                 value: None,

@@ -293,7 +293,7 @@ impl<'de> VariantAccess<'de> for Value {
     where
         V: Visitor<'de>,
     {
-        if let Value::Mapping(v) = self {
+        if let Value::Mapping(v, ..) = self {
             Deserializer::deserialize_any(MapDeserializer::new(v), visitor)
         } else {
             Err(Error::invalid_type(self.unexpected(), &"struct variant"))
@@ -372,7 +372,7 @@ impl<'de> VariantAccess<'de> for &'de Value {
     where
         V: Visitor<'de>,
     {
-        if let Value::Mapping(v) = self {
+        if let Value::Mapping(v, ..) = self {
             Deserializer::deserialize_any(MapRefDeserializer::new(v), visitor)
         } else {
             Err(Error::invalid_type(self.unexpected(), &"struct variant"))

@@ -787,9 +787,9 @@ impl ser::SerializeMap for SerializeMap {
 
     fn end(self) -> Result<Value> {
         Ok(match self {
-            SerializeMap::CheckForTag => Value::Mapping(Mapping::new()),
+            SerializeMap::CheckForTag => Value::mapping(Mapping::new()),
             SerializeMap::Tagged(tagged) => Value::Tagged(Box::new(tagged)),
-            SerializeMap::Untagged { mapping, .. } => Value::Mapping(mapping),
+            SerializeMap::Untagged { mapping, .. } => Value::mapping(mapping),
         })
     }
 }
@@ -811,7 +811,7 @@ impl ser::SerializeStruct for SerializeStruct {
     }
 
     fn end(self) -> Result<Value> {
-        Ok(Value::Mapping(self.mapping))
+        Ok(Value::mapping(self.mapping))
     }
 }
 
@@ -835,7 +835,7 @@ impl ser::SerializeStructVariant for SerializeStructVariant {
     fn end(self) -> Result<Value> {
         Ok(Value::Tagged(Box::new(TaggedValue {
             tag: Tag::new(self.tag),
-            value: Value::Mapping(self.mapping),
+            value: Value::mapping(self.mapping),
         })))
     }
 }

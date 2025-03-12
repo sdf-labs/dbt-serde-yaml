@@ -14,7 +14,7 @@ impl Debug for Value {
                 formatter.write_str("Sequence ")?;
                 formatter.debug_list().entries(sequence).finish()
             }
-            Value::Mapping(mapping) => Debug::fmt(mapping, formatter),
+            Value::Mapping(mapping, ..) => Debug::fmt(mapping, formatter),
             Value::Tagged(tagged) => Debug::fmt(tagged, formatter),
         }
     }
