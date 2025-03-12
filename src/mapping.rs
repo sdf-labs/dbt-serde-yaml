@@ -407,9 +407,9 @@ impl PartialOrd for Mapping {
         // impl.
         fn total_cmp(a: &Value, b: &Value) -> Ordering {
             match (a, b) {
-                (Value::Null, Value::Null) => Ordering::Equal,
-                (Value::Null, _) => Ordering::Less,
-                (_, Value::Null) => Ordering::Greater,
+                (Value::Null(..), Value::Null(..)) => Ordering::Equal,
+                (Value::Null(..), _) => Ordering::Less,
+                (_, Value::Null(..)) => Ordering::Greater,
 
                 (Value::Bool(a), Value::Bool(b)) => a.cmp(b),
                 (Value::Bool(_), _) => Ordering::Less,
@@ -839,7 +839,7 @@ impl Display for DuplicateKeyError<'_> {
     fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
         formatter.write_str("duplicate entry ")?;
         match self.entry.key() {
-            Value::Null => formatter.write_str("with null key"),
+            Value::Null(..) => formatter.write_str("with null key"),
             Value::Bool(boolean) => write!(formatter, "with key `{}`", boolean),
             Value::Number(number) => write!(formatter, "with key {}", number),
             Value::String(string) => write!(formatter, "with key {:?}", string),

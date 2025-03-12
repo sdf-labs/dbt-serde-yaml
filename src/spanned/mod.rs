@@ -153,7 +153,10 @@ where
     where
         S: Serializer,
     {
-        T::serialize(&self.node, serializer)
+        set_marker(self.span.start);
+        let res = T::serialize(&self.node, serializer);
+        set_marker(self.span.end);
+        res
     }
 }
 
@@ -189,6 +192,11 @@ pub fn set_marker(marker: impl Into<Marker>) {
 /// Reset the source location marker.
 pub fn reset_marker() {
     MARKER.with(|m| *m.borrow_mut() = None);
+}
+
+/// Get the current source location marker.
+pub(crate) fn get_marker() -> Option<Marker> {
+    MARKER.with(|m| m.borrow().clone())
 }
 
 thread_local! {

@@ -54,7 +54,7 @@ impl Index for usize {
                 }
                 Value::Mapping(map) => {
                     let n = Value::Number((*self).into());
-                    return map.entry(n).or_insert(Value::Null);
+                    return map.entry(n).or_insert(Value::null());
                 }
                 Value::Tagged(tagged) => v = &mut tagged.value,
                 _ => panic!("cannot access index {} of YAML {}", self, Type(v)),
@@ -88,11 +88,11 @@ where
     I: ?Sized + mapping::Index + ToOwned + Debug,
     Value: From<I::Owned>,
 {
-    if let Value::Null = *v {
+    if let Value::Null(..) = *v {
         *v = Value::Mapping(Mapping::new());
         return match v {
             Value::Mapping(map) => match map.entry(index.to_owned().into()) {
-                Entry::Vacant(entry) => entry.insert(Value::Null),
+                Entry::Vacant(entry) => entry.insert(Value::null()),
                 Entry::Occupied(_) => unreachable!(),
             },
             _ => unreachable!(),
@@ -101,7 +101,7 @@ where
     loop {
         match v {
             Value::Mapping(map) => {
-                return map.entry(index.to_owned().into()).or_insert(Value::Null);
+                return map.entry(index.to_owned().into()).or_insert(Value::null());
             }
             Value::Tagged(tagged) => v = &mut tagged.value,
             _ => panic!("cannot access key {:?} in YAML {}", index, Type(v)),
@@ -166,7 +166,7 @@ struct Type<'a>(&'a Value);
 impl fmt::Display for Type<'_> {
     fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
         match self.0 {
-            Value::Null => formatter.write_str("null"),
+            Value::Null(..) => formatter.write_str("null"),
             Value::Bool(_) => formatter.write_str("boolean"),
             Value::Number(_) => formatter.write_str("number"),
             Value::String(_) => formatter.write_str("string"),
@@ -230,7 +230,7 @@ where
     /// # }
     /// ```
     fn index(&self, index: I) -> &Value {
-        static NULL: Value = Value::Null;
+        static NULL: Value = Value::null();
         index.index_into(self).unwrap_or(&NULL)
     }
 }

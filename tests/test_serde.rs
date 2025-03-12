@@ -39,7 +39,7 @@ where
 
 #[test]
 fn test_default() {
-    assert_eq!(Value::default(), Value::Null);
+    assert_eq!(Value::default(), Value::null());
 }
 
 #[test]
@@ -510,7 +510,7 @@ fn test_value() {
     let thing = GenericInstructions {
         typ: "primary".to_string(),
         config: Value::Sequence(vec![
-            Value::Null,
+            Value::null(),
             Value::Bool(true),
             Value::Number(Number::from(65535)),
             Value::Number(Number::from(0.54321)),

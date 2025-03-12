@@ -572,7 +572,7 @@ fn test_no_required_fields() {
         let deserialized: Option<String> = dbt_serde_yaml::from_str(document).unwrap();
         assert_eq!(expected, deserialized);
 
-        let expected = Value::Null;
+        let expected = Value::null();
         let deserialized: Value = dbt_serde_yaml::from_str(document).unwrap();
         assert_eq!(expected, deserialized);
     }
@@ -656,11 +656,11 @@ fn test_tag_resolution() {
     "};
 
     let expected = vec![
-        Value::Null,
-        Value::Null,
-        Value::Null,
-        Value::Null,
-        Value::Null,
+        Value::null(),
+        Value::null(),
+        Value::null(),
+        Value::null(),
+        Value::null(),
         Value::Bool(true),
         Value::Bool(true),
         Value::Bool(true),

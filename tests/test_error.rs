@@ -203,7 +203,7 @@ fn test_serialize_nested_enum() {
         tag: Tag::new("Outer"),
         value: Value::Tagged(Box::new(TaggedValue {
             tag: Tag::new("Inner"),
-            value: Value::Null,
+            value: Value::null(),
         })),
     }));
     let error = dbt_serde_yaml::to_string(&e).unwrap_err();

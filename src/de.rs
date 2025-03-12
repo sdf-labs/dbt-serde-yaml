@@ -1812,7 +1812,7 @@ pub fn from_str<'de, T>(s: &'de str) -> Result<T>
 where
     T: Deserialize<'de>,
 {
-    spanned::set_marker(spanned::Marker::zero());
+    spanned::set_marker(spanned::Marker::start());
     let res = T::deserialize(Deserializer::from_str(s));
     spanned::reset_marker();
     res
@@ -1832,7 +1832,7 @@ where
     R: io::Read,
     T: DeserializeOwned,
 {
-    spanned::set_marker(spanned::Marker::zero());
+    spanned::set_marker(spanned::Marker::start());
     let res = T::deserialize(Deserializer::from_reader(rdr));
     spanned::reset_marker();
     res
@@ -1851,7 +1851,7 @@ pub fn from_slice<'de, T>(v: &'de [u8]) -> Result<T>
 where
     T: Deserialize<'de>,
 {
-    spanned::set_marker(spanned::Marker::zero());
+    spanned::set_marker(spanned::Marker::start());
     let res = T::deserialize(Deserializer::from_slice(v));
     spanned::reset_marker();
     res

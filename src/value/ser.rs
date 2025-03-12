@@ -1,6 +1,7 @@
 use crate::error::{self, Error, ErrorImpl};
 use crate::value::tagged::{self, MaybeTag};
 use crate::value::{to_value, Mapping, Number, Sequence, Tag, TaggedValue, Value};
+use crate::Span;
 use serde::ser::{self, Serialize};
 use std::fmt::Display;
 use std::mem;
@@ -13,7 +14,7 @@ impl Serialize for Value {
         S: serde::Serializer,
     {
         match self {
-            Value::Null => serializer.serialize_unit(),
+            Value::Null(..) => serializer.serialize_unit(),
             Value::Bool(b) => serializer.serialize_bool(*b),
             Value::Number(n) => n.serialize(serializer),
             Value::String(s) => serializer.serialize_str(s),
@@ -144,7 +145,7 @@ impl ser::Serializer for Serializer {
     }
 
     fn serialize_unit(self) -> Result<Value> {
-        Ok(Value::Null)
+        Ok(Value::Null(Span::default()))
     }
 
     fn serialize_unit_struct(self, _name: &'static str) -> Result<Value> {

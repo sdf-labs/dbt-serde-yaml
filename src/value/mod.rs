@@ -9,6 +9,7 @@ mod ser;
 pub(crate) mod tagged;
 
 use crate::error::{self, Error, ErrorImpl};
+use crate::Span;
 use serde::de::{Deserialize, DeserializeOwned, IntoDeserializer};
 use serde::Serialize;
 use std::hash::{Hash, Hasher};
@@ -22,10 +23,10 @@ pub use crate::mapping::Mapping;
 pub use crate::number::Number;
 
 /// Represents any valid YAML value.
-#[derive(Clone, PartialEq, PartialOrd)]
+#[derive(Clone)]
 pub enum Value {
     /// Represents a YAML null value.
-    Null,
+    Null(Span),
     /// Represents a YAML boolean.
     Bool(bool),
     /// Represents a YAML numerical value, whether integer or floating point.
@@ -40,6 +41,36 @@ pub enum Value {
     Mapping(Mapping),
     /// A representation of YAML's `!Tag` syntax, used for enums.
     Tagged(Box<TaggedValue>),
+}
+
+impl PartialEq for Value {
+    fn eq(&self, other: &Value) -> bool {
+        match (self, other) {
+            (Value::Null(..), Value::Null(..)) => true,
+            (Value::Bool(a), Value::Bool(b)) => a == b,
+            (Value::Number(a), Value::Number(b)) => a == b,
+            (Value::String(a), Value::String(b)) => a == b,
+            (Value::Sequence(a), Value::Sequence(b)) => a == b,
+            (Value::Mapping(a), Value::Mapping(b)) => a == b,
+            (Value::Tagged(a), Value::Tagged(b)) => a == b,
+            _ => false,
+        }
+    }
+}
+
+impl PartialOrd for Value {
+    fn partial_cmp(&self, other: &Value) -> Option<std::cmp::Ordering> {
+        match (self, other) {
+            (Value::Null(..), Value::Null(..)) => Some(std::cmp::Ordering::Equal),
+            (Value::Bool(a), Value::Bool(b)) => a.partial_cmp(b),
+            (Value::Number(a), Value::Number(b)) => a.partial_cmp(b),
+            (Value::String(a), Value::String(b)) => a.partial_cmp(b),
+            (Value::Sequence(a), Value::Sequence(b)) => a.partial_cmp(b),
+            (Value::Mapping(a), Value::Mapping(b)) => a.partial_cmp(b),
+            (Value::Tagged(a), Value::Tagged(b)) => a.partial_cmp(b),
+            _ => None,
+        }
+    }
 }
 
 /// The default value is `Value::Null`.
@@ -65,7 +96,7 @@ pub enum Value {
 /// let s: Settings = dbt_serde_yaml::from_str(data)?;
 ///
 /// assert_eq!(s.level, 42);
-/// assert_eq!(s.extras, Value::Null);
+/// assert_eq!(s.extras, Value::null());
 /// #
 /// #     Ok(())
 /// # }
@@ -74,7 +105,7 @@ pub enum Value {
 /// ```
 impl Default for Value {
     fn default() -> Value {
-        Value::Null
+        Value::Null(Span::default())
     }
 }
 
@@ -165,9 +196,9 @@ impl Value {
     /// "#)?;
     /// assert_eq!(object["B"][0], Value::String("b".into()));
     ///
-    /// assert_eq!(object[Value::String("D".into())], Value::Null);
-    /// assert_eq!(object["D"], Value::Null);
-    /// assert_eq!(object[0]["x"]["y"]["z"], Value::Null);
+    /// assert_eq!(object[Value::String("D".into())], Value::null());
+    /// assert_eq!(object["D"], Value::null());
+    /// assert_eq!(object[0]["x"]["y"]["z"], Value::null());
     ///
     /// assert_eq!(object[42], Value::Bool(true));
     /// # Ok(())
@@ -206,7 +237,7 @@ impl Value {
     /// assert!(!v.is_null());
     /// ```
     pub fn is_null(&self) -> bool {
-        if let Value::Null = self.untag_ref() {
+        if let Value::Null(..) = self.untag_ref() {
             true
         } else {
             false
@@ -228,7 +259,7 @@ impl Value {
     /// ```
     pub fn as_null(&self) -> Option<()> {
         match self.untag_ref() {
-            Value::Null => Some(()),
+            Value::Null(..) => Some(()),
             _ => None,
         }
     }
@@ -668,6 +699,41 @@ impl Value {
         }
         Ok(())
     }
+
+    /// Returns the contained [Span].
+    pub fn span(&self) -> Span {
+        match self {
+            Value::Null(span) => *span,
+            Value::Bool(_) => Span::zero(),
+            Value::Number(_) => Span::zero(),
+            Value::String(_) => Span::zero(),
+            Value::Sequence(_) => Span::zero(),
+            Value::Mapping(_) => Span::zero(),
+            Value::Tagged(_) => Span::zero(),
+        }
+    }
+
+    /// Set the span of the value.
+    pub fn set_span(&mut self, span: impl Into<Span>) {
+        let span = span.into();
+        match self {
+            Value::Null(ref mut s) => *s = span,
+            Value::Bool(_) => {}
+            Value::Number(_) => {}
+            Value::String(_) => {}
+            Value::Sequence(_) => {}
+            Value::Mapping(_) => {}
+            Value::Tagged(_) => {}
+        }
+    }
+}
+
+// Default constructors
+impl Value {
+    /// Construct a Null Value.
+    pub const fn null() -> Value {
+        Value::Null(Span::zero())
+    }
 }
 
 impl Eq for Value {}
@@ -678,7 +744,7 @@ impl Hash for Value {
     fn hash<H: Hasher>(&self, state: &mut H) {
         mem::discriminant(self).hash(state);
         match self {
-            Value::Null => {}
+            Value::Null(..) => {}
             Value::Bool(v) => v.hash(state),
             Value::Number(v) => v.hash(state),
             Value::String(v) => v.hash(state),

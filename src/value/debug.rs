@@ -5,7 +5,7 @@ use std::fmt::{self, Debug, Display};
 impl Debug for Value {
     fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            Value::Null => formatter.write_str("Null"),
+            Value::Null(..) => formatter.write_str("Null"),
             Value::Bool(boolean) => write!(formatter, "Bool({})", boolean),
             Value::Number(number) => write!(formatter, "Number({})", number),
             Value::String(string) => write!(formatter, "String({:?})", string),

@@ -1,6 +1,6 @@
 use crate::value::tagged::{self, TagStringVisitor};
 use crate::value::TaggedValue;
-use crate::{number, Error, Mapping, Sequence, Value};
+use crate::{number, spanned, Error, Mapping, Sequence, Value};
 use serde::de::value::{BorrowedStrDeserializer, StrDeserializer};
 use serde::de::{
     self, Deserialize, DeserializeSeed, Deserializer, EnumAccess, Error as _, Expected, MapAccess,
@@ -71,14 +71,14 @@ impl<'de> Deserialize<'de> for Value {
             where
                 E: de::Error,
             {
-                Ok(Value::Null)
+                Ok(Value::null())
             }
 
             fn visit_none<E>(self) -> Result<Value, E>
             where
                 E: de::Error,
             {
-                Ok(Value::Null)
+                Ok(Value::null())
             }
 
             fn visit_some<D>(self, deserializer: D) -> Result<Value, D::Error>
@@ -116,7 +116,11 @@ impl<'de> Deserialize<'de> for Value {
             }
         }
 
-        deserializer.deserialize_any(ValueVisitor)
+        let start = spanned::get_marker();
+        let mut val = deserializer.deserialize_any(ValueVisitor)?;
+        let end = spanned::get_marker();
+        val.set_span(start..end);
+        Ok(val)
     }
 }
 
@@ -200,7 +204,7 @@ impl<'de> Deserializer<'de> for Value {
         V: Visitor<'de>,
     {
         match self {
-            Value::Null => visitor.visit_unit(),
+            Value::Null(..) => visitor.visit_unit(),
             Value::Bool(v) => visitor.visit_bool(v),
             Value::Number(n) => n.deserialize_any(visitor),
             Value::String(v) => visitor.visit_string(v),
@@ -351,7 +355,7 @@ impl<'de> Deserializer<'de> for Value {
         V: Visitor<'de>,
     {
         match self {
-            Value::Null => visitor.visit_none(),
+            Value::Null(..) => visitor.visit_none(),
             _ => visitor.visit_some(self),
         }
     }
@@ -361,7 +365,7 @@ impl<'de> Deserializer<'de> for Value {
         V: Visitor<'de>,
     {
         match self {
-            Value::Null => visitor.visit_unit(),
+            Value::Null(..) => visitor.visit_unit(),
             _ => Err(self.invalid_type(&visitor)),
         }
     }
@@ -390,7 +394,7 @@ impl<'de> Deserializer<'de> for Value {
     {
         match self.untag() {
             Value::Sequence(v) => visit_sequence(v, visitor),
-            Value::Null => visit_sequence(Sequence::new(), visitor),
+            Value::Null(..) => visit_sequence(Sequence::new(), visitor),
             other => Err(other.invalid_type(&visitor)),
         }
     }
@@ -420,7 +424,7 @@ impl<'de> Deserializer<'de> for Value {
     {
         match self.untag() {
             Value::Mapping(v) => visit_mapping(v, visitor),
-            Value::Null => visit_mapping(Mapping::new(), visitor),
+            Value::Null(..) => visit_mapping(Mapping::new(), visitor),
             other => Err(other.invalid_type(&visitor)),
         }
     }
@@ -717,7 +721,7 @@ impl<'de> Deserializer<'de> for &'de Value {
         V: Visitor<'de>,
     {
         match self {
-            Value::Null => visitor.visit_unit(),
+            Value::Null(..) => visitor.visit_unit(),
             Value::Bool(v) => visitor.visit_bool(*v),
             Value::Number(n) => n.deserialize_any(visitor),
             Value::String(v) => visitor.visit_borrowed_str(v),
@@ -868,7 +872,7 @@ impl<'de> Deserializer<'de> for &'de Value {
         V: Visitor<'de>,
     {
         match self {
-            Value::Null => visitor.visit_none(),
+            Value::Null(..) => visitor.visit_none(),
             _ => visitor.visit_some(self),
         }
     }
@@ -878,7 +882,7 @@ impl<'de> Deserializer<'de> for &'de Value {
         V: Visitor<'de>,
     {
         match self {
-            Value::Null => visitor.visit_unit(),
+            Value::Null(..) => visitor.visit_unit(),
             _ => Err(self.invalid_type(&visitor)),
         }
     }
@@ -908,7 +912,7 @@ impl<'de> Deserializer<'de> for &'de Value {
         static EMPTY: Sequence = Sequence::new();
         match self.untag_ref() {
             Value::Sequence(v) => visit_sequence_ref(v, visitor),
-            Value::Null => visit_sequence_ref(&EMPTY, visitor),
+            Value::Null(..) => visit_sequence_ref(&EMPTY, visitor),
             other => Err(other.invalid_type(&visitor)),
         }
     }
@@ -938,7 +942,7 @@ impl<'de> Deserializer<'de> for &'de Value {
     {
         match self.untag_ref() {
             Value::Mapping(v) => visit_mapping_ref(v, visitor),
-            Value::Null => visitor.visit_map(&mut MapRefDeserializer {
+            Value::Null(..) => visitor.visit_map(&mut MapRefDeserializer {
                 iter: None,
                 value: None,
             }),
@@ -1230,7 +1234,7 @@ impl Value {
     #[cold]
     pub(crate) fn unexpected(&self) -> Unexpected {
         match self {
-            Value::Null => Unexpected::Unit,
+            Value::Null(..) => Unexpected::Unit,
             Value::Bool(b) => Unexpected::Bool(*b),
             Value::Number(n) => number::unexpected(n),
             Value::String(s) => Unexpected::Str(s),
