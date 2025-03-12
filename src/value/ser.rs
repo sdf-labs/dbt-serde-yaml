@@ -71,19 +71,19 @@ impl ser::Serializer for Serializer {
     }
 
     fn serialize_i8(self, v: i8) -> Result<Value> {
-        Ok(Value::Number(Number::from(v)))
+        Ok(Value::number(Number::from(v)))
     }
 
     fn serialize_i16(self, v: i16) -> Result<Value> {
-        Ok(Value::Number(Number::from(v)))
+        Ok(Value::number(Number::from(v)))
     }
 
     fn serialize_i32(self, v: i32) -> Result<Value> {
-        Ok(Value::Number(Number::from(v)))
+        Ok(Value::number(Number::from(v)))
     }
 
     fn serialize_i64(self, v: i64) -> Result<Value> {
-        Ok(Value::Number(Number::from(v)))
+        Ok(Value::number(Number::from(v)))
     }
 
     fn serialize_i128(self, v: i128) -> Result<Value> {
@@ -97,19 +97,19 @@ impl ser::Serializer for Serializer {
     }
 
     fn serialize_u8(self, v: u8) -> Result<Value> {
-        Ok(Value::Number(Number::from(v)))
+        Ok(Value::number(Number::from(v)))
     }
 
     fn serialize_u16(self, v: u16) -> Result<Value> {
-        Ok(Value::Number(Number::from(v)))
+        Ok(Value::number(Number::from(v)))
     }
 
     fn serialize_u32(self, v: u32) -> Result<Value> {
-        Ok(Value::Number(Number::from(v)))
+        Ok(Value::number(Number::from(v)))
     }
 
     fn serialize_u64(self, v: u64) -> Result<Value> {
-        Ok(Value::Number(Number::from(v)))
+        Ok(Value::number(Number::from(v)))
     }
 
     fn serialize_u128(self, v: u128) -> Result<Value> {
@@ -121,11 +121,11 @@ impl ser::Serializer for Serializer {
     }
 
     fn serialize_f32(self, v: f32) -> Result<Value> {
-        Ok(Value::Number(Number::from(v)))
+        Ok(Value::number(Number::from(v)))
     }
 
     fn serialize_f64(self, v: f64) -> Result<Value> {
-        Ok(Value::Number(Number::from(v)))
+        Ok(Value::number(Number::from(v)))
     }
 
     fn serialize_char(self, value: char) -> Result<Value> {
@@ -139,7 +139,7 @@ impl ser::Serializer for Serializer {
     fn serialize_bytes(self, value: &[u8]) -> Result<Value> {
         let vec = value
             .iter()
-            .map(|&b| Value::Number(Number::from(b)))
+            .map(|&b| Value::number(Number::from(b)))
             .collect();
         Ok(Value::Sequence(vec))
     }

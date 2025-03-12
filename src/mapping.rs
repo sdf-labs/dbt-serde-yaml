@@ -415,9 +415,9 @@ impl PartialOrd for Mapping {
                 (Value::Bool(..), _) => Ordering::Less,
                 (_, Value::Bool(..)) => Ordering::Greater,
 
-                (Value::Number(a), Value::Number(b)) => a.total_cmp(b),
-                (Value::Number(_), _) => Ordering::Less,
-                (_, Value::Number(_)) => Ordering::Greater,
+                (Value::Number(a, ..), Value::Number(b, ..)) => a.total_cmp(b),
+                (Value::Number(..), _) => Ordering::Less,
+                (_, Value::Number(..)) => Ordering::Greater,
 
                 (Value::String(a), Value::String(b)) => a.cmp(b),
                 (Value::String(_), _) => Ordering::Less,

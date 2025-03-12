@@ -8,7 +8,7 @@ impl Debug for Value {
         match self {
             Value::Null(..) => formatter.write_str("Null"),
             Value::Bool(boolean, ..) => write!(formatter, "Bool({})", boolean),
-            Value::Number(number) => write!(formatter, "Number({})", number),
+            Value::Number(number, ..) => write!(formatter, "Number({})", number),
             Value::String(string) => write!(formatter, "String({:?})", string),
             Value::Sequence(sequence) => {
                 formatter.write_str("Sequence ")?;

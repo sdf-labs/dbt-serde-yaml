@@ -431,7 +431,7 @@ fn test_numbers() {
     for &(yaml, expected) in &cases {
         let value = dbt_serde_yaml::from_str::<Value>(yaml).unwrap();
         match value {
-            Value::Number(number) => assert_eq!(number.to_string(), expected),
+            Value::Number(number, ..) => assert_eq!(number.to_string(), expected),
             _ => panic!("expected number. input={:?}, result={:?}", yaml, value),
         }
     }

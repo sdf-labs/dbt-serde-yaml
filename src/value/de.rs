@@ -36,21 +36,21 @@ impl<'de> Deserialize<'de> for Value {
             where
                 E: de::Error,
             {
-                Ok(Value::Number(i.into()))
+                Ok(Value::number(i.into()))
             }
 
             fn visit_u64<E>(self, u: u64) -> Result<Value, E>
             where
                 E: de::Error,
             {
-                Ok(Value::Number(u.into()))
+                Ok(Value::number(u.into()))
             }
 
             fn visit_f64<E>(self, f: f64) -> Result<Value, E>
             where
                 E: de::Error,
             {
-                Ok(Value::Number(f.into()))
+                Ok(Value::number(f.into()))
             }
 
             fn visit_str<E>(self, s: &str) -> Result<Value, E>
@@ -130,7 +130,7 @@ impl Value {
         V: Visitor<'de>,
     {
         match self.untag_ref() {
-            Value::Number(n) => n.deserialize_any(visitor),
+            Value::Number(n, ..) => n.deserialize_any(visitor),
             other => Err(other.invalid_type(&visitor)),
         }
     }

@@ -8,7 +8,7 @@ macro_rules! from_number {
         $(
             impl From<$ty> for Value {
                 fn from(n: $ty) -> Self {
-                    Value::Number(n.into())
+                    Value::number(n.into())
                 }
             }
         )*
