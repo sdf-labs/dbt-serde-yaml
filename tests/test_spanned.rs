@@ -146,7 +146,7 @@ fn test_value_span() {
 
     match value {
         Value::Mapping(map, ..) => {
-            let v = map.get(&Value::string("x".to_string())).unwrap();
+            let v = map.get(Value::string("x".to_string())).unwrap();
             assert!(v.span().is_valid());
             assert_eq!(v.span().start.line, 1);
             assert_eq!(v.span().start.column, 4);
