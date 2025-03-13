@@ -9,6 +9,7 @@ mod ser;
 pub(crate) mod tagged;
 
 use crate::error::{self, Error, ErrorImpl};
+use crate::Span;
 use serde::de::{Deserialize, DeserializeOwned, IntoDeserializer};
 use serde::Serialize;
 use std::hash::{Hash, Hasher};
@@ -22,24 +23,54 @@ pub use crate::mapping::Mapping;
 pub use crate::number::Number;
 
 /// Represents any valid YAML value.
-#[derive(Clone, PartialEq, PartialOrd)]
+#[derive(Clone)]
 pub enum Value {
     /// Represents a YAML null value.
-    Null,
+    Null(Span),
     /// Represents a YAML boolean.
-    Bool(bool),
+    Bool(bool, Span),
     /// Represents a YAML numerical value, whether integer or floating point.
-    Number(Number),
+    Number(Number, Span),
     /// Represents a YAML string.
-    String(String),
+    String(String, Span),
     /// Represents a YAML sequence in which the elements are
     /// `dbt_serde_yaml::Value`.
-    Sequence(Sequence),
+    Sequence(Sequence, Span),
     /// Represents a YAML mapping in which the keys and values are both
     /// `dbt_serde_yaml::Value`.
-    Mapping(Mapping),
+    Mapping(Mapping, Span),
     /// A representation of YAML's `!Tag` syntax, used for enums.
-    Tagged(Box<TaggedValue>),
+    Tagged(Box<TaggedValue>, Span),
+}
+
+impl PartialEq for Value {
+    fn eq(&self, other: &Value) -> bool {
+        match (self, other) {
+            (Value::Null(..), Value::Null(..)) => true,
+            (Value::Bool(a, ..), Value::Bool(b, ..)) => a == b,
+            (Value::Number(a, ..), Value::Number(b, ..)) => a == b,
+            (Value::String(a, ..), Value::String(b, ..)) => a == b,
+            (Value::Sequence(a, ..), Value::Sequence(b, ..)) => a == b,
+            (Value::Mapping(a, ..), Value::Mapping(b, ..)) => a == b,
+            (Value::Tagged(a, ..), Value::Tagged(b, ..)) => a == b,
+            _ => false,
+        }
+    }
+}
+
+impl PartialOrd for Value {
+    fn partial_cmp(&self, other: &Value) -> Option<std::cmp::Ordering> {
+        match (self, other) {
+            (Value::Null(..), Value::Null(..)) => Some(std::cmp::Ordering::Equal),
+            (Value::Bool(a, ..), Value::Bool(b, ..)) => a.partial_cmp(b),
+            (Value::Number(a, ..), Value::Number(b, ..)) => a.partial_cmp(b),
+            (Value::String(a, ..), Value::String(b, ..)) => a.partial_cmp(b),
+            (Value::Sequence(a, ..), Value::Sequence(b, ..)) => a.partial_cmp(b),
+            (Value::Mapping(a, ..), Value::Mapping(b, ..)) => a.partial_cmp(b),
+            (Value::Tagged(a, ..), Value::Tagged(b, ..)) => a.partial_cmp(b),
+            _ => None,
+        }
+    }
 }
 
 /// The default value is `Value::Null`.
@@ -65,7 +96,7 @@ pub enum Value {
 /// let s: Settings = dbt_serde_yaml::from_str(data)?;
 ///
 /// assert_eq!(s.level, 42);
-/// assert_eq!(s.extras, Value::Null);
+/// assert_eq!(s.extras, Value::null());
 /// #
 /// #     Ok(())
 /// # }
@@ -74,7 +105,7 @@ pub enum Value {
 /// ```
 impl Default for Value {
     fn default() -> Value {
-        Value::Null
+        Value::Null(Span::default())
     }
 }
 
@@ -90,7 +121,7 @@ pub type Sequence = Vec<Value>;
 /// ```
 /// # use dbt_serde_yaml::Value;
 /// let val = dbt_serde_yaml::to_value("s").unwrap();
-/// assert_eq!(val, Value::String("s".to_owned()));
+/// assert_eq!(val, Value::string("s".to_owned()));
 /// ```
 pub fn to_value<T>(value: T) -> Result<Value, Error>
 where
@@ -111,7 +142,7 @@ where
 ///
 /// ```
 /// # use dbt_serde_yaml::Value;
-/// let val = Value::String("foo".to_owned());
+/// let val = Value::string("foo".to_owned());
 /// let s: String = dbt_serde_yaml::from_value(val).unwrap();
 /// assert_eq!("foo", s);
 /// ```
@@ -142,7 +173,7 @@ impl Value {
     ///
     /// let sequence: Value = dbt_serde_yaml::from_str(r#"[ "A", "B", "C" ]"#)?;
     /// let x = sequence.get(2).unwrap();
-    /// assert_eq!(x, &Value::String("C".into()));
+    /// assert_eq!(x, &Value::string("C".into()));
     ///
     /// assert_eq!(sequence.get("A"), None);
     /// # Ok(())
@@ -163,13 +194,13 @@ impl Value {
     /// C: [c, ć, ć̣, ḉ]
     /// 42: true
     /// "#)?;
-    /// assert_eq!(object["B"][0], Value::String("b".into()));
+    /// assert_eq!(object["B"][0], Value::string("b".into()));
     ///
-    /// assert_eq!(object[Value::String("D".into())], Value::Null);
-    /// assert_eq!(object["D"], Value::Null);
-    /// assert_eq!(object[0]["x"]["y"]["z"], Value::Null);
+    /// assert_eq!(object[Value::string("D".into())], Value::null());
+    /// assert_eq!(object["D"], Value::null());
+    /// assert_eq!(object[0]["x"]["y"]["z"], Value::null());
     ///
-    /// assert_eq!(object[42], Value::Bool(true));
+    /// assert_eq!(object[42], Value::bool(true));
     /// # Ok(())
     /// # }
     /// ```
@@ -206,7 +237,7 @@ impl Value {
     /// assert!(!v.is_null());
     /// ```
     pub fn is_null(&self) -> bool {
-        if let Value::Null = self.untag_ref() {
+        if let Value::Null(..) = self.untag_ref() {
             true
         } else {
             false
@@ -228,7 +259,7 @@ impl Value {
     /// ```
     pub fn as_null(&self) -> Option<()> {
         match self.untag_ref() {
-            Value::Null => Some(()),
+            Value::Null(..) => Some(()),
             _ => None,
         }
     }
@@ -269,7 +300,7 @@ impl Value {
     /// ```
     pub fn as_bool(&self) -> Option<bool> {
         match self.untag_ref() {
-            Value::Bool(b) => Some(*b),
+            Value::Bool(b, ..) => Some(*b),
             _ => None,
         }
     }
@@ -289,7 +320,7 @@ impl Value {
     /// ```
     pub fn is_number(&self) -> bool {
         match self.untag_ref() {
-            Value::Number(_) => true,
+            Value::Number(..) => true,
             _ => false,
         }
     }
@@ -331,7 +362,7 @@ impl Value {
     /// ```
     pub fn as_i64(&self) -> Option<i64> {
         match self.untag_ref() {
-            Value::Number(n) => n.as_i64(),
+            Value::Number(n, ..) => n.as_i64(),
             _ => None,
         }
     }
@@ -373,7 +404,7 @@ impl Value {
     /// ```
     pub fn as_u64(&self) -> Option<u64> {
         match self.untag_ref() {
-            Value::Number(n) => n.as_u64(),
+            Value::Number(n, ..) => n.as_u64(),
             _ => None,
         }
     }
@@ -399,7 +430,7 @@ impl Value {
     /// ```
     pub fn is_f64(&self) -> bool {
         match self.untag_ref() {
-            Value::Number(n) => n.is_f64(),
+            Value::Number(n, ..) => n.is_f64(),
             _ => false,
         }
     }
@@ -420,7 +451,7 @@ impl Value {
     /// ```
     pub fn as_f64(&self) -> Option<f64> {
         match self.untag_ref() {
-            Value::Number(i) => i.as_f64(),
+            Value::Number(i, ..) => i.as_f64(),
             _ => None,
         }
     }
@@ -461,7 +492,7 @@ impl Value {
     /// ```
     pub fn as_str(&self) -> Option<&str> {
         match self.untag_ref() {
-            Value::String(s) => Some(s),
+            Value::String(s, ..) => Some(s),
             _ => None,
         }
     }
@@ -489,7 +520,7 @@ impl Value {
     /// ```
     /// # use dbt_serde_yaml::{Value, Number};
     /// let v: Value = dbt_serde_yaml::from_str("[1, 2]").unwrap();
-    /// assert_eq!(v.as_sequence(), Some(&vec![Value::Number(Number::from(1)), Value::Number(Number::from(2))]));
+    /// assert_eq!(v.as_sequence(), Some(&vec![Value::number(Number::from(1)), Value::number(Number::from(2))]));
     /// ```
     ///
     /// ```
@@ -499,7 +530,7 @@ impl Value {
     /// ```
     pub fn as_sequence(&self) -> Option<&Sequence> {
         match self.untag_ref() {
-            Value::Sequence(seq) => Some(seq),
+            Value::Sequence(seq, ..) => Some(seq),
             _ => None,
         }
     }
@@ -511,8 +542,8 @@ impl Value {
     /// # use dbt_serde_yaml::{Value, Number};
     /// let mut v: Value = dbt_serde_yaml::from_str("[1]").unwrap();
     /// let s = v.as_sequence_mut().unwrap();
-    /// s.push(Value::Number(Number::from(2)));
-    /// assert_eq!(s, &vec![Value::Number(Number::from(1)), Value::Number(Number::from(2))]);
+    /// s.push(Value::number(Number::from(2)));
+    /// assert_eq!(s, &vec![Value::number(Number::from(1)), Value::number(Number::from(2))]);
     /// ```
     ///
     /// ```
@@ -522,7 +553,7 @@ impl Value {
     /// ```
     pub fn as_sequence_mut(&mut self) -> Option<&mut Sequence> {
         match self.untag_mut() {
-            Value::Sequence(seq) => Some(seq),
+            Value::Sequence(seq, ..) => Some(seq),
             _ => None,
         }
     }
@@ -552,7 +583,7 @@ impl Value {
     /// let v: Value = dbt_serde_yaml::from_str("a: 42").unwrap();
     ///
     /// let mut expected = Mapping::new();
-    /// expected.insert(Value::String("a".into()),Value::Number(Number::from(42)));
+    /// expected.insert(Value::string("a".into()),Value::number(Number::from(42)));
     ///
     /// assert_eq!(v.as_mapping(), Some(&expected));
     /// ```
@@ -564,7 +595,7 @@ impl Value {
     /// ```
     pub fn as_mapping(&self) -> Option<&Mapping> {
         match self.untag_ref() {
-            Value::Mapping(map) => Some(map),
+            Value::Mapping(map, ..) => Some(map),
             _ => None,
         }
     }
@@ -576,11 +607,11 @@ impl Value {
     /// # use dbt_serde_yaml::{Value, Mapping, Number};
     /// let mut v: Value = dbt_serde_yaml::from_str("a: 42").unwrap();
     /// let m = v.as_mapping_mut().unwrap();
-    /// m.insert(Value::String("b".into()), Value::Number(Number::from(21)));
+    /// m.insert(Value::string("b".into()), Value::number(Number::from(21)));
     ///
     /// let mut expected = Mapping::new();
-    /// expected.insert(Value::String("a".into()), Value::Number(Number::from(42)));
-    /// expected.insert(Value::String("b".into()), Value::Number(Number::from(21)));
+    /// expected.insert(Value::string("a".into()), Value::number(Number::from(42)));
+    /// expected.insert(Value::string("b".into()), Value::number(Number::from(21)));
     ///
     /// assert_eq!(m, &expected);
     /// ```
@@ -592,7 +623,7 @@ impl Value {
     /// ```
     pub fn as_mapping_mut(&mut self) -> Option<&mut Mapping> {
         match self.untag_mut() {
-            Value::Mapping(map) => Some(map),
+            Value::Mapping(map, ..) => Some(map),
             _ => None,
         }
     }
@@ -628,25 +659,25 @@ impl Value {
         stack.push(self);
         while let Some(node) = stack.pop() {
             match node {
-                Value::Mapping(mapping) => {
+                Value::Mapping(mapping, ..) => {
                     match mapping.remove("<<") {
-                        Some(Value::Mapping(merge)) => {
+                        Some(Value::Mapping(merge, ..)) => {
                             for (k, v) in merge {
                                 mapping.entry(k).or_insert(v);
                             }
                         }
-                        Some(Value::Sequence(sequence)) => {
+                        Some(Value::Sequence(sequence, ..)) => {
                             for value in sequence {
                                 match value {
-                                    Value::Mapping(merge) => {
+                                    Value::Mapping(merge, ..) => {
                                         for (k, v) in merge {
                                             mapping.entry(k).or_insert(v);
                                         }
                                     }
-                                    Value::Sequence(_) => {
+                                    Value::Sequence(..) => {
                                         return Err(error::new(ErrorImpl::SequenceInMergeElement));
                                     }
-                                    Value::Tagged(_) => {
+                                    Value::Tagged(..) => {
                                         return Err(error::new(ErrorImpl::TaggedInMerge));
                                     }
                                     _unexpected => {
@@ -656,17 +687,84 @@ impl Value {
                             }
                         }
                         None => {}
-                        Some(Value::Tagged(_)) => return Err(error::new(ErrorImpl::TaggedInMerge)),
+                        Some(Value::Tagged(..)) => {
+                            return Err(error::new(ErrorImpl::TaggedInMerge))
+                        }
                         Some(_unexpected) => return Err(error::new(ErrorImpl::ScalarInMerge)),
                     }
                     stack.extend(mapping.values_mut());
                 }
-                Value::Sequence(sequence) => stack.extend(sequence),
-                Value::Tagged(tagged) => stack.push(&mut tagged.value),
+                Value::Sequence(sequence, ..) => stack.extend(sequence),
+                Value::Tagged(tagged, ..) => stack.push(&mut tagged.value),
                 _ => {}
             }
         }
         Ok(())
+    }
+
+    /// Returns the contained [Span].
+    pub fn span(&self) -> Span {
+        match self {
+            Value::Null(span)
+            | Value::Bool(_, span)
+            | Value::Number(_, span)
+            | Value::Sequence(_, span)
+            | Value::Mapping(_, span)
+            | Value::Tagged(_, span)
+            | Value::String(_, span) => *span,
+        }
+    }
+
+    /// Set the span of the value.
+    pub fn set_span(&mut self, span: impl Into<Span>) {
+        let span = span.into();
+        match self {
+            Value::Null(ref mut s)
+            | Value::Bool(_, ref mut s)
+            | Value::Number(_, ref mut s)
+            | Value::Sequence(_, ref mut s)
+            | Value::Mapping(_, ref mut s)
+            | Value::Tagged(_, ref mut s)
+            | Value::String(_, ref mut s) => *s = span,
+        }
+    }
+}
+
+// Default constructors
+impl Value {
+    /// Construct a Null Value.
+    pub const fn null() -> Value {
+        Value::Null(Span::zero())
+    }
+
+    /// Construct a Bool Value.
+    pub const fn bool(b: bool) -> Value {
+        Value::Bool(b, Span::zero())
+    }
+
+    /// Construct a Number Value.
+    pub const fn number(n: Number) -> Value {
+        Value::Number(n, Span::zero())
+    }
+
+    /// Construct a String Value.
+    pub const fn string(s: String) -> Value {
+        Value::String(s, Span::zero())
+    }
+
+    /// Construct a Sequence Value.
+    pub fn sequence(seq: Sequence) -> Value {
+        Value::Sequence(seq, Span::zero())
+    }
+
+    /// Construct a Mapping Value.
+    pub fn mapping(map: Mapping) -> Value {
+        Value::Mapping(map, Span::zero())
+    }
+
+    /// Construct a Tagged Value.
+    pub fn tagged(tagged: impl Into<Box<TaggedValue>>) -> Value {
+        Value::Tagged(tagged.into(), Span::zero())
     }
 }
 
@@ -678,13 +776,13 @@ impl Hash for Value {
     fn hash<H: Hasher>(&self, state: &mut H) {
         mem::discriminant(self).hash(state);
         match self {
-            Value::Null => {}
-            Value::Bool(v) => v.hash(state),
-            Value::Number(v) => v.hash(state),
-            Value::String(v) => v.hash(state),
-            Value::Sequence(v) => v.hash(state),
-            Value::Mapping(v) => v.hash(state),
-            Value::Tagged(v) => v.hash(state),
+            Value::Null(..) => {}
+            Value::Bool(v, ..) => v.hash(state),
+            Value::Number(v, ..) => v.hash(state),
+            Value::String(v, ..) => v.hash(state),
+            Value::Sequence(v, ..) => v.hash(state),
+            Value::Mapping(v, ..) => v.hash(state),
+            Value::Tagged(v, ..) => v.hash(state),
         }
     }
 }

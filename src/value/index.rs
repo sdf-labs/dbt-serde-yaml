@@ -28,22 +28,22 @@ pub trait Index: private::Sealed {
 impl Index for usize {
     fn index_into<'v>(&self, v: &'v Value) -> Option<&'v Value> {
         match v.untag_ref() {
-            Value::Sequence(vec) => vec.get(*self),
-            Value::Mapping(vec) => vec.get(Value::Number((*self).into())),
+            Value::Sequence(vec, ..) => vec.get(*self),
+            Value::Mapping(vec, ..) => vec.get(Value::number((*self).into())),
             _ => None,
         }
     }
     fn index_into_mut<'v>(&self, v: &'v mut Value) -> Option<&'v mut Value> {
         match v.untag_mut() {
-            Value::Sequence(vec) => vec.get_mut(*self),
-            Value::Mapping(vec) => vec.get_mut(Value::Number((*self).into())),
+            Value::Sequence(vec, ..) => vec.get_mut(*self),
+            Value::Mapping(vec, ..) => vec.get_mut(Value::number((*self).into())),
             _ => None,
         }
     }
     fn index_or_insert<'v>(&self, mut v: &'v mut Value) -> &'v mut Value {
         loop {
             match v {
-                Value::Sequence(vec) => {
+                Value::Sequence(vec, ..) => {
                     let len = vec.len();
                     return vec.get_mut(*self).unwrap_or_else(|| {
                         panic!(
@@ -52,11 +52,11 @@ impl Index for usize {
                         )
                     });
                 }
-                Value::Mapping(map) => {
-                    let n = Value::Number((*self).into());
-                    return map.entry(n).or_insert(Value::Null);
+                Value::Mapping(map, ..) => {
+                    let n = Value::number((*self).into());
+                    return map.entry(n).or_insert(Value::null());
                 }
-                Value::Tagged(tagged) => v = &mut tagged.value,
+                Value::Tagged(tagged, ..) => v = &mut tagged.value,
                 _ => panic!("cannot access index {} of YAML {}", self, Type(v)),
             }
         }
@@ -68,7 +68,7 @@ where
     I: ?Sized + mapping::Index,
 {
     match v.untag_ref() {
-        Value::Mapping(map) => map.get(index),
+        Value::Mapping(map, ..) => map.get(index),
         _ => None,
     }
 }
@@ -78,7 +78,7 @@ where
     I: ?Sized + mapping::Index,
 {
     match v.untag_mut() {
-        Value::Mapping(map) => map.get_mut(index),
+        Value::Mapping(map, ..) => map.get_mut(index),
         _ => None,
     }
 }
@@ -88,11 +88,11 @@ where
     I: ?Sized + mapping::Index + ToOwned + Debug,
     Value: From<I::Owned>,
 {
-    if let Value::Null = *v {
-        *v = Value::Mapping(Mapping::new());
+    if let Value::Null(..) = *v {
+        *v = Value::mapping(Mapping::new());
         return match v {
-            Value::Mapping(map) => match map.entry(index.to_owned().into()) {
-                Entry::Vacant(entry) => entry.insert(Value::Null),
+            Value::Mapping(map, ..) => match map.entry(index.to_owned().into()) {
+                Entry::Vacant(entry) => entry.insert(Value::null()),
                 Entry::Occupied(_) => unreachable!(),
             },
             _ => unreachable!(),
@@ -100,10 +100,10 @@ where
     }
     loop {
         match v {
-            Value::Mapping(map) => {
-                return map.entry(index.to_owned().into()).or_insert(Value::Null);
+            Value::Mapping(map, ..) => {
+                return map.entry(index.to_owned().into()).or_insert(Value::null());
             }
-            Value::Tagged(tagged) => v = &mut tagged.value,
+            Value::Tagged(tagged, ..) => v = &mut tagged.value,
             _ => panic!("cannot access key {:?} in YAML {}", index, Type(v)),
         }
     }
@@ -166,13 +166,13 @@ struct Type<'a>(&'a Value);
 impl fmt::Display for Type<'_> {
     fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
         match self.0 {
-            Value::Null => formatter.write_str("null"),
-            Value::Bool(_) => formatter.write_str("boolean"),
-            Value::Number(_) => formatter.write_str("number"),
-            Value::String(_) => formatter.write_str("string"),
-            Value::Sequence(_) => formatter.write_str("sequence"),
-            Value::Mapping(_) => formatter.write_str("mapping"),
-            Value::Tagged(_) => unreachable!(),
+            Value::Null(..) => formatter.write_str("null"),
+            Value::Bool(..) => formatter.write_str("boolean"),
+            Value::Number(..) => formatter.write_str("number"),
+            Value::String(..) => formatter.write_str("string"),
+            Value::Sequence(..) => formatter.write_str("sequence"),
+            Value::Mapping(..) => formatter.write_str("mapping"),
+            Value::Tagged(..) => unreachable!(),
         }
     }
 }
@@ -230,7 +230,7 @@ where
     /// # }
     /// ```
     fn index(&self, index: I) -> &Value {
-        static NULL: Value = Value::Null;
+        static NULL: Value = Value::null();
         index.index_into(self).unwrap_or(&NULL)
     }
 }

@@ -8,7 +8,7 @@ macro_rules! from_number {
         $(
             impl From<$ty> for Value {
                 fn from(n: $ty) -> Self {
-                    Value::Number(n.into())
+                    Value::number(n.into())
                 }
             }
         )*
@@ -33,7 +33,7 @@ impl From<bool> for Value {
     /// let x: Value = b.into();
     /// ```
     fn from(f: bool) -> Self {
-        Value::Bool(f)
+        Value::Bool(f, Default::default())
     }
 }
 
@@ -49,7 +49,7 @@ impl From<String> for Value {
     /// let x: Value = s.into();
     /// ```
     fn from(f: String) -> Self {
-        Value::String(f)
+        Value::string(f)
     }
 }
 
@@ -65,7 +65,7 @@ impl From<&str> for Value {
     /// let x: Value = s.into();
     /// ```
     fn from(f: &str) -> Self {
-        Value::String(f.to_string())
+        Value::string(f.to_string())
     }
 }
 
@@ -92,7 +92,7 @@ impl<'a> From<Cow<'a, str>> for Value {
     /// let x: Value = s.into();
     /// ```
     fn from(f: Cow<'a, str>) -> Self {
-        Value::String(f.to_string())
+        Value::string(f.to_string())
     }
 }
 
@@ -109,7 +109,7 @@ impl From<Mapping> for Value {
     /// let x: Value = m.into();
     /// ```
     fn from(f: Mapping) -> Self {
-        Value::Mapping(f)
+        Value::mapping(f)
     }
 }
 
@@ -125,7 +125,7 @@ impl<T: Into<Value>> From<Vec<T>> for Value {
     /// let x: Value = v.into();
     /// ```
     fn from(f: Vec<T>) -> Self {
-        Value::Sequence(f.into_iter().map(Into::into).collect())
+        Value::sequence(f.into_iter().map(Into::into).collect())
     }
 }
 
@@ -141,7 +141,7 @@ impl<'a, T: Clone + Into<Value>> From<&'a [T]> for Value {
     /// let x: Value = v.into();
     /// ```
     fn from(f: &'a [T]) -> Self {
-        Value::Sequence(f.iter().cloned().map(Into::into).collect())
+        Value::sequence(f.iter().cloned().map(Into::into).collect())
     }
 }
 
@@ -173,6 +173,6 @@ impl<T: Into<Value>> FromIterator<T> for Value {
     fn from_iter<I: IntoIterator<Item = T>>(iter: I) -> Self {
         let vec = iter.into_iter().map(T::into).collect();
 
-        Value::Sequence(vec)
+        Value::sequence(vec)
     }
 }

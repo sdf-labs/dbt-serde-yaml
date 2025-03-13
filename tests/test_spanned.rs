@@ -1,6 +1,6 @@
 use std::collections::HashSet;
 
-use dbt_serde_yaml::Spanned;
+use dbt_serde_yaml::{Spanned, Value};
 use serde::Deserialize as _;
 use serde_derive::{Deserialize, Serialize};
 
@@ -130,4 +130,46 @@ fn test_spanned_ser() {
     };
     let yaml = dbt_serde_yaml::to_string(&point2).unwrap();
     assert_eq!(yaml, "x: 1.0\ny: 2.0\n");
+}
+
+#[test]
+fn test_value_span() {
+    let yaml = "x: 1.0\ny: 2.0\n";
+    let value: Value = dbt_serde_yaml::from_str(yaml).unwrap();
+    assert!(value.span().is_valid());
+    assert_eq!(value.span().start.index, 0);
+    assert_eq!(value.span().start.line, 1);
+    assert_eq!(value.span().start.column, 1);
+    assert_eq!(value.span().end.index, 14);
+    assert_eq!(value.span().end.line, 3);
+    assert_eq!(value.span().end.column, 1);
+
+    match value {
+        Value::Mapping(map, ..) => {
+            let v = map.get(Value::string("x".to_string())).unwrap();
+            assert!(v.span().is_valid());
+            assert_eq!(v.span().start.line, 1);
+            assert_eq!(v.span().start.column, 4);
+            assert_eq!(v.span().end.line, 2);
+            assert_eq!(v.span().end.column, 1);
+            assert_eq!(yaml[v.span().start.index..v.span().end.index].trim(), "1.0");
+
+            let keys = map.keys().collect::<Vec<_>>();
+            assert_eq!(keys.len(), 2);
+            let x = keys[0];
+            assert!(x.span().is_valid());
+            assert_eq!(x.span().start.line, 1);
+            assert_eq!(x.span().start.column, 1);
+            assert_eq!(x.span().end.line, 1);
+            assert_eq!(yaml[x.span().start.index..x.span().end.index].trim(), "x:");
+
+            let y = keys[1];
+            assert!(y.span().is_valid());
+            assert_eq!(y.span().start.line, 2);
+            assert_eq!(y.span().start.column, 1);
+            assert_eq!(y.span().end.line, 2);
+            assert_eq!(yaml[y.span().start.index..y.span().end.index].trim(), "y:");
+        }
+        _ => panic!("expected mapping"),
+    }
 }

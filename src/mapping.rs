@@ -269,7 +269,7 @@ struct HashLikeValue<'a>(&'a str);
 impl indexmap::Equivalent<Value> for HashLikeValue<'_> {
     fn equivalent(&self, key: &Value) -> bool {
         match key {
-            Value::String(string) => self.0 == string,
+            Value::String(string, ..) => self.0 == string,
             _ => false,
         }
     }
@@ -278,7 +278,7 @@ impl indexmap::Equivalent<Value> for HashLikeValue<'_> {
 // NOTE: This impl must be consistent with Value's Hash impl.
 impl Hash for HashLikeValue<'_> {
     fn hash<H: Hasher>(&self, state: &mut H) {
-        const STRING: Value = Value::String(String::new());
+        const STRING: Value = Value::string(String::new());
         mem::discriminant(&STRING).hash(state);
         self.0.hash(state);
     }
@@ -407,35 +407,35 @@ impl PartialOrd for Mapping {
         // impl.
         fn total_cmp(a: &Value, b: &Value) -> Ordering {
             match (a, b) {
-                (Value::Null, Value::Null) => Ordering::Equal,
-                (Value::Null, _) => Ordering::Less,
-                (_, Value::Null) => Ordering::Greater,
+                (Value::Null(..), Value::Null(..)) => Ordering::Equal,
+                (Value::Null(..), _) => Ordering::Less,
+                (_, Value::Null(..)) => Ordering::Greater,
 
-                (Value::Bool(a), Value::Bool(b)) => a.cmp(b),
-                (Value::Bool(_), _) => Ordering::Less,
-                (_, Value::Bool(_)) => Ordering::Greater,
+                (Value::Bool(a, ..), Value::Bool(b, ..)) => a.cmp(b),
+                (Value::Bool(..), _) => Ordering::Less,
+                (_, Value::Bool(..)) => Ordering::Greater,
 
-                (Value::Number(a), Value::Number(b)) => a.total_cmp(b),
-                (Value::Number(_), _) => Ordering::Less,
-                (_, Value::Number(_)) => Ordering::Greater,
+                (Value::Number(a, ..), Value::Number(b, ..)) => a.total_cmp(b),
+                (Value::Number(..), _) => Ordering::Less,
+                (_, Value::Number(..)) => Ordering::Greater,
 
-                (Value::String(a), Value::String(b)) => a.cmp(b),
-                (Value::String(_), _) => Ordering::Less,
-                (_, Value::String(_)) => Ordering::Greater,
+                (Value::String(a, ..), Value::String(b, ..)) => a.cmp(b),
+                (Value::String(..), _) => Ordering::Less,
+                (_, Value::String(..)) => Ordering::Greater,
 
-                (Value::Sequence(a), Value::Sequence(b)) => iter_cmp_by(a, b, total_cmp),
-                (Value::Sequence(_), _) => Ordering::Less,
-                (_, Value::Sequence(_)) => Ordering::Greater,
+                (Value::Sequence(a, ..), Value::Sequence(b, ..)) => iter_cmp_by(a, b, total_cmp),
+                (Value::Sequence(..), _) => Ordering::Less,
+                (_, Value::Sequence(..)) => Ordering::Greater,
 
-                (Value::Mapping(a), Value::Mapping(b)) => {
+                (Value::Mapping(a, ..), Value::Mapping(b, ..)) => {
                     iter_cmp_by(a, b, |(ak, av), (bk, bv)| {
                         total_cmp(ak, bk).then_with(|| total_cmp(av, bv))
                     })
                 }
-                (Value::Mapping(_), _) => Ordering::Less,
-                (_, Value::Mapping(_)) => Ordering::Greater,
+                (Value::Mapping(..), _) => Ordering::Less,
+                (_, Value::Mapping(..)) => Ordering::Greater,
 
-                (Value::Tagged(a), Value::Tagged(b)) => a
+                (Value::Tagged(a, ..), Value::Tagged(b, ..)) => a
                     .tag
                     .cmp(&b.tag)
                     .then_with(|| total_cmp(&a.value, &b.value)),
@@ -839,11 +839,11 @@ impl Display for DuplicateKeyError<'_> {
     fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
         formatter.write_str("duplicate entry ")?;
         match self.entry.key() {
-            Value::Null => formatter.write_str("with null key"),
-            Value::Bool(boolean) => write!(formatter, "with key `{}`", boolean),
-            Value::Number(number) => write!(formatter, "with key {}", number),
-            Value::String(string) => write!(formatter, "with key {:?}", string),
-            Value::Sequence(_) | Value::Mapping(_) | Value::Tagged(_) => {
+            Value::Null(..) => formatter.write_str("with null key"),
+            Value::Bool(boolean, ..) => write!(formatter, "with key `{}`", boolean),
+            Value::Number(number, ..) => write!(formatter, "with key {}", number),
+            Value::String(string, ..) => write!(formatter, "with key {:?}", string),
+            Value::Sequence(..) | Value::Mapping(..) | Value::Tagged(..) => {
                 formatter.write_str("in YAML map")
             }
         }

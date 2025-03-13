@@ -1,6 +1,7 @@
 use crate::error::{self, Error, ErrorImpl};
 use crate::value::tagged::{self, MaybeTag};
 use crate::value::{to_value, Mapping, Number, Sequence, Tag, TaggedValue, Value};
+use crate::Span;
 use serde::ser::{self, Serialize};
 use std::fmt::Display;
 use std::mem;
@@ -13,12 +14,12 @@ impl Serialize for Value {
         S: serde::Serializer,
     {
         match self {
-            Value::Null => serializer.serialize_unit(),
-            Value::Bool(b) => serializer.serialize_bool(*b),
-            Value::Number(n) => n.serialize(serializer),
-            Value::String(s) => serializer.serialize_str(s),
-            Value::Sequence(seq) => seq.serialize(serializer),
-            Value::Mapping(mapping) => {
+            Value::Null(..) => serializer.serialize_unit(),
+            Value::Bool(b, ..) => serializer.serialize_bool(*b),
+            Value::Number(n, ..) => n.serialize(serializer),
+            Value::String(s, ..) => serializer.serialize_str(s),
+            Value::Sequence(seq, ..) => seq.serialize(serializer),
+            Value::Mapping(mapping, ..) => {
                 use serde::ser::SerializeMap;
                 let mut map = serializer.serialize_map(Some(mapping.len()))?;
                 for (k, v) in mapping {
@@ -26,7 +27,7 @@ impl Serialize for Value {
                 }
                 map.end()
             }
-            Value::Tagged(tagged) => tagged.serialize(serializer),
+            Value::Tagged(tagged, ..) => tagged.serialize(serializer),
         }
     }
 }
@@ -66,23 +67,23 @@ impl ser::Serializer for Serializer {
     type SerializeStructVariant = SerializeStructVariant;
 
     fn serialize_bool(self, v: bool) -> Result<Value> {
-        Ok(Value::Bool(v))
+        Ok(Value::bool(v))
     }
 
     fn serialize_i8(self, v: i8) -> Result<Value> {
-        Ok(Value::Number(Number::from(v)))
+        Ok(Value::number(Number::from(v)))
     }
 
     fn serialize_i16(self, v: i16) -> Result<Value> {
-        Ok(Value::Number(Number::from(v)))
+        Ok(Value::number(Number::from(v)))
     }
 
     fn serialize_i32(self, v: i32) -> Result<Value> {
-        Ok(Value::Number(Number::from(v)))
+        Ok(Value::number(Number::from(v)))
     }
 
     fn serialize_i64(self, v: i64) -> Result<Value> {
-        Ok(Value::Number(Number::from(v)))
+        Ok(Value::number(Number::from(v)))
     }
 
     fn serialize_i128(self, v: i128) -> Result<Value> {
@@ -91,60 +92,60 @@ impl ser::Serializer for Serializer {
         } else if let Ok(v) = i64::try_from(v) {
             self.serialize_i64(v)
         } else {
-            Ok(Value::String(v.to_string()))
+            Ok(Value::string(v.to_string()))
         }
     }
 
     fn serialize_u8(self, v: u8) -> Result<Value> {
-        Ok(Value::Number(Number::from(v)))
+        Ok(Value::number(Number::from(v)))
     }
 
     fn serialize_u16(self, v: u16) -> Result<Value> {
-        Ok(Value::Number(Number::from(v)))
+        Ok(Value::number(Number::from(v)))
     }
 
     fn serialize_u32(self, v: u32) -> Result<Value> {
-        Ok(Value::Number(Number::from(v)))
+        Ok(Value::number(Number::from(v)))
     }
 
     fn serialize_u64(self, v: u64) -> Result<Value> {
-        Ok(Value::Number(Number::from(v)))
+        Ok(Value::number(Number::from(v)))
     }
 
     fn serialize_u128(self, v: u128) -> Result<Value> {
         if let Ok(v) = u64::try_from(v) {
             self.serialize_u64(v)
         } else {
-            Ok(Value::String(v.to_string()))
+            Ok(Value::string(v.to_string()))
         }
     }
 
     fn serialize_f32(self, v: f32) -> Result<Value> {
-        Ok(Value::Number(Number::from(v)))
+        Ok(Value::number(Number::from(v)))
     }
 
     fn serialize_f64(self, v: f64) -> Result<Value> {
-        Ok(Value::Number(Number::from(v)))
+        Ok(Value::number(Number::from(v)))
     }
 
     fn serialize_char(self, value: char) -> Result<Value> {
-        Ok(Value::String(value.to_string()))
+        Ok(Value::string(value.to_string()))
     }
 
     fn serialize_str(self, value: &str) -> Result<Value> {
-        Ok(Value::String(value.to_owned()))
+        Ok(Value::string(value.to_owned()))
     }
 
     fn serialize_bytes(self, value: &[u8]) -> Result<Value> {
         let vec = value
             .iter()
-            .map(|&b| Value::Number(Number::from(b)))
+            .map(|&b| Value::number(Number::from(b)))
             .collect();
-        Ok(Value::Sequence(vec))
+        Ok(Value::sequence(vec))
     }
 
     fn serialize_unit(self) -> Result<Value> {
-        Ok(Value::Null)
+        Ok(Value::Null(Span::default()))
     }
 
     fn serialize_unit_struct(self, _name: &'static str) -> Result<Value> {
@@ -157,7 +158,7 @@ impl ser::Serializer for Serializer {
         _variant_index: u32,
         variant: &str,
     ) -> Result<Value> {
-        Ok(Value::String(variant.to_owned()))
+        Ok(Value::string(variant.to_owned()))
     }
 
     fn serialize_newtype_struct<T>(self, _name: &'static str, value: &T) -> Result<Value>
@@ -180,7 +181,7 @@ impl ser::Serializer for Serializer {
         if variant.is_empty() {
             return Err(error::new(ErrorImpl::EmptyTag));
         }
-        Ok(Value::Tagged(Box::new(TaggedValue {
+        Ok(Value::tagged(Box::new(TaggedValue {
             tag: Tag::new(variant),
             value: to_value(value)?,
         })))
@@ -280,7 +281,7 @@ impl ser::SerializeSeq for SerializeArray {
     }
 
     fn end(self) -> Result<Value> {
-        Ok(Value::Sequence(self.sequence))
+        Ok(Value::sequence(self.sequence))
     }
 }
 
@@ -334,9 +335,9 @@ impl ser::SerializeTupleVariant for SerializeTupleVariant {
     }
 
     fn end(self) -> Result<Value> {
-        Ok(Value::Tagged(Box::new(TaggedValue {
+        Ok(Value::tagged(Box::new(TaggedValue {
             tag: Tag::new(self.tag),
-            value: Value::Sequence(self.sequence),
+            value: Value::sequence(self.sequence),
         })))
     }
 }
@@ -369,7 +370,7 @@ impl ser::SerializeMap for SerializeMap {
             SerializeMap::Tagged(tagged) => {
                 let mut mapping = Mapping::new();
                 mapping.insert(
-                    Value::String(tagged.tag.to_string()),
+                    Value::string(tagged.tag.to_string()),
                     mem::take(&mut tagged.value),
                 );
                 *self = SerializeMap::Untagged {
@@ -615,7 +616,7 @@ impl ser::SerializeMap for SerializeMap {
             {
                 Ok(match tagged::check_for_tag(value) {
                     MaybeTag::Tag(tag) => MaybeTag::Tag(tag),
-                    MaybeTag::NotTag(string) => MaybeTag::NotTag(Value::String(string)),
+                    MaybeTag::NotTag(string) => MaybeTag::NotTag(Value::string(string)),
                 })
             }
         }
@@ -768,7 +769,7 @@ impl ser::SerializeMap for SerializeMap {
             SerializeMap::Tagged(tagged) => {
                 let mut mapping = Mapping::new();
                 mapping.insert(
-                    Value::String(tagged.tag.to_string()),
+                    Value::string(tagged.tag.to_string()),
                     mem::take(&mut tagged.value),
                 );
                 mapping.insert(to_value(key)?, to_value(value)?);
@@ -786,9 +787,9 @@ impl ser::SerializeMap for SerializeMap {
 
     fn end(self) -> Result<Value> {
         Ok(match self {
-            SerializeMap::CheckForTag => Value::Mapping(Mapping::new()),
-            SerializeMap::Tagged(tagged) => Value::Tagged(Box::new(tagged)),
-            SerializeMap::Untagged { mapping, .. } => Value::Mapping(mapping),
+            SerializeMap::CheckForTag => Value::mapping(Mapping::new()),
+            SerializeMap::Tagged(tagged) => Value::tagged(Box::new(tagged)),
+            SerializeMap::Untagged { mapping, .. } => Value::mapping(mapping),
         })
     }
 }
@@ -810,7 +811,7 @@ impl ser::SerializeStruct for SerializeStruct {
     }
 
     fn end(self) -> Result<Value> {
-        Ok(Value::Mapping(self.mapping))
+        Ok(Value::mapping(self.mapping))
     }
 }
 
@@ -832,9 +833,9 @@ impl ser::SerializeStructVariant for SerializeStructVariant {
     }
 
     fn end(self) -> Result<Value> {
-        Ok(Value::Tagged(Box::new(TaggedValue {
+        Ok(Value::tagged(Box::new(TaggedValue {
             tag: Tag::new(self.tag),
-            value: Value::Mapping(self.mapping),
+            value: Value::mapping(self.mapping),
         })))
     }
 }
