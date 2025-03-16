@@ -4,6 +4,7 @@ on:
   push:
   pull_request:
   workflow_dispatch:
+  schedule: [cron: "40 1 * * 1"]
 
 permissions:
   contents: read
@@ -23,7 +24,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        rust: [nightly, stable, 1.84.0]
+        rust: [nightly, stable, 1.84.1]
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
