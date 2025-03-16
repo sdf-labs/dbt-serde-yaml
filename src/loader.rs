@@ -42,6 +42,15 @@ impl<'input> Loader<'input> {
     }
 
     pub fn next_document(&mut self) -> Option<Document<'input>> {
+        let document = self.next_document_inner()?;
+        if let Some((_event, mark)) = document.events.first() {
+            spanned::set_marker(*mark);
+        }
+
+        Some(document)
+    }
+
+    fn next_document_inner(&mut self) -> Option<Document<'input>> {
         let parser = match &mut self.parser {
             Some(parser) => parser,
             None => return None,
@@ -78,10 +87,7 @@ impl<'input> Loader<'input> {
                         None
                     };
                 }
-                YamlEvent::DocumentStart => {
-                    spanned::set_marker(mark);
-                    continue;
-                }
+                YamlEvent::DocumentStart => continue,
                 YamlEvent::DocumentEnd => {
                     document.events.push((Event::Void, mark));
                     return Some(document);
