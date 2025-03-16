@@ -92,6 +92,7 @@ fn test_merge() {
     "};
 
     let mut value: Value = dbt_serde_yaml::from_str(yaml).unwrap();
+    assert!(value.span().is_valid());
     value.apply_merge().unwrap();
     for i in 5..=7 {
         assert_eq!(value[4], value[i]);
@@ -113,6 +114,7 @@ fn test_debug() {
     "};
 
     let value: Value = dbt_serde_yaml::from_str(yaml).unwrap();
+    assert!(value.span().is_valid());
     let debug = format!("{:#?}", value);
 
     let expected = indoc! {r#"
@@ -150,4 +152,100 @@ fn test_tagged() {
 
     let serialized = dbt_serde_yaml::to_value(&value).unwrap();
     assert_eq!(value, serialized);
+}
+
+#[test]
+fn test_value_span() {
+    let yaml = "x: 1.0\ny: 2.0\n";
+    let value: Value = dbt_serde_yaml::from_str(yaml).unwrap();
+    assert!(value.span().is_valid());
+    assert_eq!(value.span().start.index, 0);
+    assert_eq!(value.span().start.line, 1);
+    assert_eq!(value.span().start.column, 1);
+    assert_eq!(value.span().end.index, 14);
+    assert_eq!(value.span().end.line, 3);
+    assert_eq!(value.span().end.column, 1);
+
+    match value {
+        Value::Mapping(map, ..) => {
+            let v = map.get(Value::string("x".to_string())).unwrap();
+            assert!(v.span().is_valid());
+            assert_eq!(v.span().start.line, 1);
+            assert_eq!(v.span().start.column, 4);
+            assert_eq!(v.span().end.line, 2);
+            assert_eq!(v.span().end.column, 1);
+            assert_eq!(yaml[v.span().start.index..v.span().end.index].trim(), "1.0");
+
+            let keys = map.keys().collect::<Vec<_>>();
+            assert_eq!(keys.len(), 2);
+            let x = keys[0];
+            assert!(x.span().is_valid());
+            assert_eq!(x.span().start.line, 1);
+            assert_eq!(x.span().start.column, 1);
+            assert_eq!(x.span().end.line, 1);
+            assert_eq!(yaml[x.span().start.index..x.span().end.index].trim(), "x:");
+
+            let y = keys[1];
+            assert!(y.span().is_valid());
+            assert_eq!(y.span().start.line, 2);
+            assert_eq!(y.span().start.column, 1);
+            assert_eq!(y.span().end.line, 2);
+            assert_eq!(yaml[y.span().start.index..y.span().end.index].trim(), "y:");
+        }
+        _ => panic!("expected mapping"),
+    }
+}
+
+#[test]
+fn test_value_span_multidoc() {
+    let yaml = indoc! {"
+        ---
+        x: 1.0
+        y: 2.0
+        ---
+        struc: !wat
+          x: 0
+        tuple: !wat
+          - 0
+          - 0
+        newtype: !wat 0
+        map: !wat
+          x: 0
+        vec: !wat
+          - 0
+        ---
+    "};
+    let mut values = vec![];
+    for document in dbt_serde_yaml::Deserializer::from_str(yaml) {
+        let value = Value::deserialize(document).unwrap();
+        values.push(value);
+    }
+    assert_eq!(values.len(), 3);
+    assert!(values[0].span().is_valid());
+    assert!(values[1].span().is_valid());
+    assert_eq!(
+        yaml[values[0].span().start.index..values[0].span().end.index].trim(),
+        "x: 1.0\ny: 2.0"
+    );
+
+    assert_eq!(values[1].span().start.line, 5);
+    assert_eq!(values[1].span().start.column, 1);
+
+    let struc_key_span = values[1]
+        .as_mapping()
+        .unwrap()
+        .keys()
+        .next()
+        .unwrap()
+        .span();
+    assert_eq!(struc_key_span.start.line, 5);
+    assert_eq!(struc_key_span.start.column, 1);
+    assert_eq!(struc_key_span.end.line, 5);
+    assert_eq!(struc_key_span.end.column, 8);
+
+    let tuple_span = values[1].get("tuple").unwrap().span();
+    assert_eq!(
+        yaml[tuple_span.start.index..tuple_span.end.index].trim(),
+        "!wat\n  - 0\n  - 0"
+    );
 }
