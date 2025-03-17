@@ -183,8 +183,8 @@ where
 
 /// Set the current source location marker.
 ///
-/// This is called by [Deserializer] implementations to inform the [Spanned]
-/// type about the current source location.
+/// This is called by [Deserializer] implementations to inform the
+/// [crate::Spanned] and [crate::Value] types about the current source location.
 pub fn set_marker(marker: impl Into<Marker>) {
     MARKER.with(|m| *m.borrow_mut() = Some(marker.into()));
 }

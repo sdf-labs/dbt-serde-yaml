@@ -138,3 +138,44 @@ fn test_spanned_ser() {
     let yaml = dbt_serde_yaml::to_string(&point2).unwrap();
     assert_eq!(yaml, "x: 1.0\ny: 2.0\n");
 }
+
+#[test]
+fn test_spanned_de_from_value() {
+    #[derive(Deserialize)]
+    struct Point {
+        x: Spanned<f64>,
+        y: Spanned<f64>,
+    }
+
+    let yaml = indoc! {"
+        x: 1.0
+        y: 2.0
+    "};
+
+    let value: dbt_serde_yaml::Value = dbt_serde_yaml::from_str(yaml).unwrap();
+    let point: Spanned<Point> = dbt_serde_yaml::from_value(value).unwrap();
+
+    assert!(point.has_valid_span());
+    assert_eq!(point.span().start.line, 1);
+    assert_eq!(point.span().start.column, 1);
+    assert_eq!(point.span().end.line, 3);
+    assert_eq!(point.span().end.column, 1);
+
+    assert_eq!(*point.x, 1.0);
+    assert!(point.x.has_valid_span());
+    assert!(point.y.has_valid_span());
+    assert_eq!(point.x.span().start.index, 3);
+    assert_eq!(*point.y, 2.0);
+    assert_eq!(point.y.span().start.line, 2);
+    assert_eq!(point.y.span().start.column, 4);
+    assert_eq!(point.y.span().end.line, 3);
+    assert_eq!(point.y.span().end.column, 1);
+    assert_eq!(
+        yaml[point.x.span().start.index..point.x.span().end.index].trim(),
+        "1.0"
+    );
+    assert_eq!(
+        yaml[point.y.span().start.index..point.y.span().end.index].trim(),
+        "2.0"
+    );
+}

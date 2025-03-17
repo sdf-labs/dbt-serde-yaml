@@ -9,7 +9,7 @@ mod ser;
 pub(crate) mod tagged;
 
 use crate::error::{self, Error, ErrorImpl};
-use crate::Span;
+use crate::{spanned, Span};
 use serde::de::{Deserialize, DeserializeOwned, IntoDeserializer};
 use serde::Serialize;
 use std::hash::{Hash, Hasher};
@@ -150,7 +150,10 @@ pub fn from_value<T>(value: Value) -> Result<T, Error>
 where
     T: DeserializeOwned,
 {
-    Deserialize::deserialize(value)
+    value.broadcast_start_mark();
+    let res = Deserialize::deserialize(value);
+    spanned::reset_marker();
+    res
 }
 
 impl Value {
@@ -727,6 +730,14 @@ impl Value {
             | Value::Tagged(_, ref mut s)
             | Value::String(_, ref mut s) => *s = span,
         }
+    }
+
+    fn broadcast_start_mark(&self) {
+        spanned::set_marker(self.span().start);
+    }
+
+    fn broadcast_end_mark(&self) {
+        spanned::set_marker(self.span().end);
     }
 }
 
