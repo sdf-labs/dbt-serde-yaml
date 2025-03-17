@@ -129,6 +129,7 @@ impl Value {
     where
         V: Visitor<'de>,
     {
+        self.broadcast_end_mark();
         match self.untag_ref() {
             Value::Number(n, ..) => n.deserialize_any(visitor),
             other => Err(other.invalid_type(&visitor)),
@@ -203,6 +204,7 @@ impl<'de> Deserializer<'de> for Value {
     where
         V: Visitor<'de>,
     {
+        self.broadcast_end_mark();
         match self {
             Value::Null(..) => visitor.visit_unit(),
             Value::Bool(v, ..) => visitor.visit_bool(v),
@@ -218,6 +220,7 @@ impl<'de> Deserializer<'de> for Value {
     where
         V: Visitor<'de>,
     {
+        self.broadcast_end_mark();
         match self.untag() {
             Value::Bool(v, ..) => visitor.visit_bool(v),
             other => Err(other.invalid_type(&visitor)),
@@ -326,6 +329,7 @@ impl<'de> Deserializer<'de> for Value {
     where
         V: Visitor<'de>,
     {
+        self.broadcast_end_mark();
         match self.untag() {
             Value::String(v, ..) => visitor.visit_string(v),
             other => Err(other.invalid_type(&visitor)),
@@ -343,6 +347,7 @@ impl<'de> Deserializer<'de> for Value {
     where
         V: Visitor<'de>,
     {
+        self.broadcast_end_mark();
         match self.untag() {
             Value::String(v, ..) => visitor.visit_string(v),
             Value::Sequence(v, ..) => visit_sequence(v, visitor),
@@ -354,6 +359,7 @@ impl<'de> Deserializer<'de> for Value {
     where
         V: Visitor<'de>,
     {
+        self.broadcast_end_mark();
         match self {
             Value::Null(..) => visitor.visit_none(),
             _ => visitor.visit_some(self),
@@ -364,6 +370,7 @@ impl<'de> Deserializer<'de> for Value {
     where
         V: Visitor<'de>,
     {
+        self.broadcast_end_mark();
         match self {
             Value::Null(..) => visitor.visit_unit(),
             _ => Err(self.invalid_type(&visitor)),
@@ -385,6 +392,7 @@ impl<'de> Deserializer<'de> for Value {
     where
         V: Visitor<'de>,
     {
+        self.broadcast_end_mark();
         visitor.visit_newtype_struct(self)
     }
 
@@ -392,6 +400,7 @@ impl<'de> Deserializer<'de> for Value {
     where
         V: Visitor<'de>,
     {
+        self.broadcast_end_mark();
         match self.untag() {
             Value::Sequence(v, ..) => visit_sequence(v, visitor),
             Value::Null(..) => visit_sequence(Sequence::new(), visitor),
@@ -422,6 +431,7 @@ impl<'de> Deserializer<'de> for Value {
     where
         V: Visitor<'de>,
     {
+        self.broadcast_end_mark();
         match self.untag() {
             Value::Mapping(v, ..) => visit_mapping(v, visitor),
             Value::Null(..) => visit_mapping(Mapping::new(), visitor),
@@ -438,6 +448,7 @@ impl<'de> Deserializer<'de> for Value {
     where
         V: Visitor<'de>,
     {
+        self.broadcast_end_mark();
         self.deserialize_map(visitor)
     }
 
@@ -486,6 +497,7 @@ impl<'de> Deserializer<'de> for Value {
     where
         V: Visitor<'de>,
     {
+        self.broadcast_end_mark();
         drop(self);
         visitor.visit_unit()
     }
