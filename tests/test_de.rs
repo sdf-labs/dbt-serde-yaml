@@ -715,3 +715,44 @@ fn test_parse_number() {
     let err = " 1 ".parse::<Number>().unwrap_err();
     assert_eq!(err.to_string(), "failed to parse YAML number");
 }
+
+#[test]
+fn test_multiline_string() {
+    #[derive(Deserialize, PartialEq, Debug)]
+    struct Data {
+        a: String,
+        b: String,
+        c: String,
+        d: String,
+        e: Vec<String>,
+    }
+
+    let yaml = indoc! {"
+        a: |
+          foo
+          bar
+        b: >
+          foo
+          bar
+        c: |2
+          foo
+          bar
+        d: '
+          foo
+          bar
+        '
+        e: 
+          - foo
+          - bar
+    "};
+
+    let expected = Data {
+        a: "foo\nbar\n".to_owned(),
+        b: "foo bar\n".to_owned(),
+        c: "foo\nbar\n".to_owned(),
+        d: " foo bar ".to_owned(),
+        e: vec!["foo".to_owned(), "bar".to_owned()],
+    };
+
+    test_de(yaml, &expected);
+}
