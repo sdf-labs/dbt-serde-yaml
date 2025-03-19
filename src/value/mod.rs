@@ -718,9 +718,16 @@ impl Value {
         }
     }
 
-    /// Set the span of the value.
-    pub fn set_span(&mut self, span: impl Into<Span>) {
+    /// Replace the span of this value with the given span.
+    pub fn with_span(self, span: impl Into<Span>) -> Self {
+        let mut this = self;
         let span = span.into();
+        this.set_span(span);
+        this
+    }
+
+    /// Set the span of the value.
+    fn set_span(&mut self, span: Span) {
         match self {
             Value::Null(ref mut s)
             | Value::Bool(_, ref mut s)

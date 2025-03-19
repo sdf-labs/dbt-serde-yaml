@@ -117,10 +117,9 @@ impl<'de> Deserialize<'de> for Value {
         }
 
         let start = spanned::get_marker();
-        let mut val = deserializer.deserialize_any(ValueVisitor)?;
+        let val = deserializer.deserialize_any(ValueVisitor)?;
         let end = spanned::get_marker();
-        val.set_span(start..end);
-        Ok(val)
+        Ok(val.with_span(start..end))
     }
 }
 
