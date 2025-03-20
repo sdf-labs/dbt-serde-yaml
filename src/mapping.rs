@@ -813,8 +813,15 @@ impl<'de> Deserialize<'de> for Mapping {
 
                 while let Some(key) = data.next_key()? {
                     match mapping.entry(key) {
-                        Entry::Occupied(entry) => {
-                            return Err(serde::de::Error::custom(DuplicateKeyError { entry }));
+                        Entry::Occupied(mut entry) => {
+                            #[cfg(feature = "duplicate_last_value_wins")]
+                            {
+                                entry.insert(data.next_value()?);
+                            }
+                            #[cfg(not(feature = "duplicate_last_value_wins"))]
+                            {
+                                return Err(serde::de::Error::custom(DuplicateKeyError { entry }));
+                            }
                         }
                         Entry::Vacant(entry) => {
                             let value = data.next_value()?;
@@ -831,6 +838,7 @@ impl<'de> Deserialize<'de> for Mapping {
     }
 }
 
+#[allow(dead_code)]
 struct DuplicateKeyError<'a> {
     entry: OccupiedEntry<'a>,
 }
