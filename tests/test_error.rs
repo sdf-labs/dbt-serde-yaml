@@ -569,4 +569,23 @@ fn test_duplicate_keys() {
         "{}: true\n",
         "{}: false\n",
     );
+
+    let yaml = indoc! {"
+        ---
+        - x: true
+        - map: 
+            key: true
+            key: false
+    "};
+    let expected = ".[1].map: duplicate entry with key \"key\" at line 4 column 5";
+    test_error::<Value>(yaml, expected);
+    test_ignore_duplicate_keys(
+        yaml,
+        &[Value::String(
+            "key".to_string(),
+            Span::new(Marker::new(40, 5, 5), Marker::new(45, 5, 10)),
+        )],
+        "- x: true\n- map:\n    key: true\n",
+        "- x: true\n- map:\n    key: false\n",
+    );
 }

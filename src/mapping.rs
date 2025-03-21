@@ -1,5 +1,6 @@
 //! A YAML mapping and its iterator types.
 
+use crate::value::ValueVisitor;
 use crate::{private, Value};
 use indexmap::IndexMap;
 use serde::{Deserialize, Deserializer, Serialize};
@@ -787,7 +788,7 @@ impl<'de> Deserialize<'de> for Mapping {
     where
         D: Deserializer<'de>,
     {
-        deserializer.deserialize_map(MappingVisitor(|_| DuplicateKey::Error))
+        deserializer.deserialize_map(MappingVisitor(&mut |_| DuplicateKey::Error))
     }
 }
 
@@ -821,9 +822,9 @@ pub enum DuplicateKey {
     Overwrite,
 }
 
-pub(crate) struct MappingVisitor<F: FnMut(&Value) -> DuplicateKey>(pub F);
+pub(crate) struct MappingVisitor<'a, F: FnMut(&Value) -> DuplicateKey>(pub &'a mut F);
 
-impl<'de, F> serde::de::Visitor<'de> for MappingVisitor<F>
+impl<'de, F> serde::de::Visitor<'de> for MappingVisitor<'_, F>
 where
     F: FnMut(&Value) -> DuplicateKey,
 {
@@ -842,15 +843,16 @@ where
     }
 
     #[inline]
-    fn visit_map<A>(mut self, mut data: A) -> Result<Self::Value, A::Error>
+    fn visit_map<A>(self, mut data: A) -> Result<Self::Value, A::Error>
     where
         A: serde::de::MapAccess<'de>,
     {
         let mut mapping = Mapping::new();
+        let callback = &mut *self.0;
 
-        while let Some(key) = data.next_key()? {
+        while let Some(key) = data.next_key_seed(ValueVisitor(callback))? {
             if mapping.contains_key(&key) {
-                match self.0(&key) {
+                match callback(&key) {
                     DuplicateKey::Error => {
                         let entry = match mapping.entry(key) {
                             Entry::Occupied(entry) => entry,
@@ -860,15 +862,15 @@ where
                         return Err(serde::de::Error::custom(DuplicateKeyError { entry }));
                     }
                     DuplicateKey::Ignore => {
-                        let _ = data.next_value::<Value>()?;
+                        let _ = data.next_value_seed(ValueVisitor(callback))?;
                     }
                     DuplicateKey::Overwrite => {
-                        let value = data.next_value()?;
+                        let value = data.next_value_seed(ValueVisitor(callback))?;
                         mapping.insert(key, value);
                     }
                 }
             } else {
-                let value = data.next_value()?;
+                let value = data.next_value_seed(ValueVisitor(callback))?;
                 mapping.insert(key, value);
             }
         }
