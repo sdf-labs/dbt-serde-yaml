@@ -1,7 +1,8 @@
 #![allow(clippy::zero_sized_map_values)]
 
+use dbt_serde_yaml::mapping::DuplicateKey;
 use dbt_serde_yaml::value::{Tag, TaggedValue};
-use dbt_serde_yaml::{Deserializer, Value};
+use dbt_serde_yaml::{Deserializer, Marker, Span, Value};
 use indoc::indoc;
 use serde::de::Deserialize;
 #[cfg(not(miri))]
@@ -464,8 +465,43 @@ fn test_billion_laughs() {
     test_error::<BTreeMap<String, X>>(yaml, expected);
 }
 
+macro_rules! assert_values_exact {
+    ($actual:expr, $expected:expr) => {
+        assert_eq!($actual.len(), $expected.len());
+        for (actual, expected) in $actual.iter().zip($expected.iter()) {
+            assert_eq!(actual, expected);
+            assert_eq!(actual.span(), expected.span());
+        }
+    };
+}
+
 #[test]
 fn test_duplicate_keys() {
+    fn test_ignore_duplicate_keys(
+        yaml: &str,
+        expected_duplicate_keys: &[Value],
+        ignore: &str,
+        overwrite: &str,
+    ) {
+        let mut duplicate_keys = Vec::new();
+        let actual = Value::from_str(yaml, |key| {
+            duplicate_keys.push(key.clone());
+            DuplicateKey::Ignore
+        })
+        .unwrap();
+        assert_eq!(dbt_serde_yaml::to_string(&actual).unwrap(), ignore);
+        assert_values_exact!(duplicate_keys, expected_duplicate_keys);
+
+        let mut duplicate_keys = Vec::new();
+        let actual = Value::from_str(yaml, |key| {
+            duplicate_keys.push(key.clone());
+            DuplicateKey::Overwrite
+        })
+        .unwrap();
+        assert_eq!(dbt_serde_yaml::to_string(&actual).unwrap(), overwrite);
+        assert_values_exact!(duplicate_keys, expected_duplicate_keys);
+    }
+
     let yaml = indoc! {"
         ---
         thing: true
@@ -473,6 +509,15 @@ fn test_duplicate_keys() {
     "};
     let expected = "duplicate entry with key \"thing\" at line 2 column 1";
     test_error::<Value>(yaml, expected);
+    test_ignore_duplicate_keys(
+        yaml,
+        &[Value::String(
+            "thing".to_string(),
+            Span::new(Marker::new(16, 3, 1), Marker::new(23, 3, 8)),
+        )],
+        "thing: true\n",
+        "thing: false\n",
+    );
 
     let yaml = indoc! {"
         ---
@@ -481,6 +526,15 @@ fn test_duplicate_keys() {
     "};
     let expected = "duplicate entry with null key at line 2 column 1";
     test_error::<Value>(yaml, expected);
+    test_ignore_duplicate_keys(
+        yaml,
+        &[Value::Null(Span::new(
+            Marker::new(15, 3, 1),
+            Marker::new(18, 3, 4),
+        ))],
+        "null: true\n",
+        "null: false\n",
+    );
 
     let yaml = indoc! {"
         ---
@@ -489,6 +543,15 @@ fn test_duplicate_keys() {
     "};
     let expected = "duplicate entry with key 99 at line 2 column 1";
     test_error::<Value>(yaml, expected);
+    test_ignore_duplicate_keys(
+        yaml,
+        &[Value::Number(
+            99.into(),
+            Span::new(Marker::new(13, 3, 1), Marker::new(17, 3, 5)),
+        )],
+        "99: true\n",
+        "99: false\n",
+    );
 
     let yaml = indoc! {"
         ---
@@ -497,4 +560,13 @@ fn test_duplicate_keys() {
     "};
     let expected = "duplicate entry in YAML map at line 2 column 1";
     test_error::<Value>(yaml, expected);
+    test_ignore_duplicate_keys(
+        yaml,
+        &[Value::Mapping(
+            dbt_serde_yaml::Mapping::new(),
+            Span::new(Marker::new(13, 3, 1), Marker::new(17, 3, 5)),
+        )],
+        "{}: true\n",
+        "{}: false\n",
+    );
 }

@@ -1,3 +1,4 @@
+use crate::mapping::{DuplicateKey, MappingVisitor};
 use crate::value::tagged::{self, TagStringVisitor};
 use crate::value::TaggedValue;
 use crate::{number, spanned, Error, Mapping, Sequence, Value};
@@ -11,113 +12,167 @@ use std::fmt;
 use std::slice;
 use std::vec;
 
+impl Value {
+    /// Deserialize a [Value] from a string of YAML text.
+    pub fn from_str<F>(s: &str, duplicate_key_callback: F) -> Result<Self, Error>
+    where
+        F: FnMut(&Self) -> DuplicateKey,
+    {
+        let de = crate::de::Deserializer::from_str(s);
+        spanned::set_marker(spanned::Marker::start());
+        let res = deserialize(de, duplicate_key_callback);
+        spanned::reset_marker();
+        res
+    }
+
+    /// Deserialize a [Value] from an IO stream of YAML text.
+    pub fn from_reader<R, F>(rdr: R, duplicate_key_callback: F) -> Result<Self, Error>
+    where
+        R: std::io::Read,
+        F: FnMut(&Self) -> DuplicateKey,
+    {
+        let de = crate::de::Deserializer::from_reader(rdr);
+        spanned::set_marker(spanned::Marker::start());
+        let res = deserialize(de, duplicate_key_callback);
+        spanned::reset_marker();
+        res
+    }
+
+    /// Deserialize a [Value] from a byte slice of YAML text.
+    pub fn from_slice<F>(s: &[u8], duplicate_key_callback: F) -> Result<Self, Error>
+    where
+        F: FnMut(&Self) -> DuplicateKey,
+    {
+        let de = crate::de::Deserializer::from_slice(s);
+        spanned::set_marker(spanned::Marker::start());
+        let res = deserialize(de, duplicate_key_callback);
+        spanned::reset_marker();
+        res
+    }
+}
+
+struct ValueVisitor<F: FnMut(&Value) -> DuplicateKey>(F);
+
+impl<'de, F> serde::de::Visitor<'de> for ValueVisitor<F>
+where
+    F: FnMut(&Value) -> DuplicateKey,
+{
+    type Value = Value;
+
+    fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        formatter.write_str("any valid YAML value")
+    }
+
+    fn visit_bool<E>(self, b: bool) -> Result<Value, E>
+    where
+        E: serde::de::Error,
+    {
+        Ok(Value::bool(b))
+    }
+
+    fn visit_i64<E>(self, i: i64) -> Result<Value, E>
+    where
+        E: serde::de::Error,
+    {
+        Ok(Value::number(i.into()))
+    }
+
+    fn visit_u64<E>(self, u: u64) -> Result<Value, E>
+    where
+        E: serde::de::Error,
+    {
+        Ok(Value::number(u.into()))
+    }
+
+    fn visit_f64<E>(self, f: f64) -> Result<Value, E>
+    where
+        E: serde::de::Error,
+    {
+        Ok(Value::number(f.into()))
+    }
+
+    fn visit_str<E>(self, s: &str) -> Result<Value, E>
+    where
+        E: serde::de::Error,
+    {
+        Ok(Value::string(s.to_owned()))
+    }
+
+    fn visit_string<E>(self, s: String) -> Result<Value, E>
+    where
+        E: serde::de::Error,
+    {
+        Ok(Value::string(s))
+    }
+
+    fn visit_unit<E>(self) -> Result<Value, E>
+    where
+        E: serde::de::Error,
+    {
+        Ok(Value::null())
+    }
+
+    fn visit_none<E>(self) -> Result<Value, E>
+    where
+        E: serde::de::Error,
+    {
+        Ok(Value::null())
+    }
+
+    fn visit_some<D>(self, deserializer: D) -> Result<Value, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        Deserialize::deserialize(deserializer)
+    }
+
+    fn visit_seq<A>(self, data: A) -> Result<Value, A::Error>
+    where
+        A: SeqAccess<'de>,
+    {
+        let de = serde::de::value::SeqAccessDeserializer::new(data);
+        let sequence = Sequence::deserialize(de)?;
+        Ok(Value::sequence(sequence))
+    }
+
+    fn visit_map<A>(mut self, data: A) -> Result<Value, A::Error>
+    where
+        A: MapAccess<'de>,
+    {
+        let de = serde::de::value::MapAccessDeserializer::new(data);
+        let visitor = MappingVisitor(&mut self.0);
+        let mapping = de.deserialize_map(visitor)?;
+        Ok(Value::mapping(mapping))
+    }
+
+    fn visit_enum<A>(self, data: A) -> Result<Self::Value, A::Error>
+    where
+        A: EnumAccess<'de>,
+    {
+        let (tag, contents) = data.variant_seed(TagStringVisitor)?;
+        let value = contents.newtype_variant()?;
+        Ok(Value::tagged(TaggedValue { tag, value }))
+    }
+}
+
+fn deserialize<'de, D, F>(deserializer: D, duplicate_key_callback: F) -> Result<Value, D::Error>
+where
+    D: serde::Deserializer<'de>,
+    F: FnMut(&Value) -> DuplicateKey,
+{
+    let start = spanned::get_marker();
+    let val = deserializer.deserialize_any(ValueVisitor(duplicate_key_callback))?;
+    let end = spanned::get_marker();
+    Ok(val.with_span(start..end))
+}
+
 impl<'de> Deserialize<'de> for Value {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
         D: Deserializer<'de>,
     {
-        struct ValueVisitor;
-
-        impl<'de> Visitor<'de> for ValueVisitor {
-            type Value = Value;
-
-            fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-                formatter.write_str("any YAML value")
-            }
-
-            fn visit_bool<E>(self, b: bool) -> Result<Value, E>
-            where
-                E: de::Error,
-            {
-                Ok(Value::bool(b))
-            }
-
-            fn visit_i64<E>(self, i: i64) -> Result<Value, E>
-            where
-                E: de::Error,
-            {
-                Ok(Value::number(i.into()))
-            }
-
-            fn visit_u64<E>(self, u: u64) -> Result<Value, E>
-            where
-                E: de::Error,
-            {
-                Ok(Value::number(u.into()))
-            }
-
-            fn visit_f64<E>(self, f: f64) -> Result<Value, E>
-            where
-                E: de::Error,
-            {
-                Ok(Value::number(f.into()))
-            }
-
-            fn visit_str<E>(self, s: &str) -> Result<Value, E>
-            where
-                E: de::Error,
-            {
-                Ok(Value::string(s.to_owned()))
-            }
-
-            fn visit_string<E>(self, s: String) -> Result<Value, E>
-            where
-                E: de::Error,
-            {
-                Ok(Value::string(s))
-            }
-
-            fn visit_unit<E>(self) -> Result<Value, E>
-            where
-                E: de::Error,
-            {
-                Ok(Value::null())
-            }
-
-            fn visit_none<E>(self) -> Result<Value, E>
-            where
-                E: de::Error,
-            {
-                Ok(Value::null())
-            }
-
-            fn visit_some<D>(self, deserializer: D) -> Result<Value, D::Error>
-            where
-                D: Deserializer<'de>,
-            {
-                Deserialize::deserialize(deserializer)
-            }
-
-            fn visit_seq<A>(self, data: A) -> Result<Value, A::Error>
-            where
-                A: SeqAccess<'de>,
-            {
-                let de = serde::de::value::SeqAccessDeserializer::new(data);
-                let sequence = Sequence::deserialize(de)?;
-                Ok(Value::sequence(sequence))
-            }
-
-            fn visit_map<A>(self, data: A) -> Result<Value, A::Error>
-            where
-                A: MapAccess<'de>,
-            {
-                let de = serde::de::value::MapAccessDeserializer::new(data);
-                let mapping = Mapping::deserialize(de)?;
-                Ok(Value::mapping(mapping))
-            }
-
-            fn visit_enum<A>(self, data: A) -> Result<Self::Value, A::Error>
-            where
-                A: EnumAccess<'de>,
-            {
-                let (tag, contents) = data.variant_seed(TagStringVisitor)?;
-                let value = contents.newtype_variant()?;
-                Ok(Value::tagged(TaggedValue { tag, value }))
-            }
-        }
-
         let start = spanned::get_marker();
-        let val = deserializer.deserialize_any(ValueVisitor)?;
+        let val = deserializer.deserialize_any(ValueVisitor(|_| DuplicateKey::Error))?;
         let end = spanned::get_marker();
         Ok(val.with_span(start..end))
     }

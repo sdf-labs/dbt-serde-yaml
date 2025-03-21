@@ -787,47 +787,7 @@ impl<'de> Deserialize<'de> for Mapping {
     where
         D: Deserializer<'de>,
     {
-        struct Visitor;
-
-        impl<'de> serde::de::Visitor<'de> for Visitor {
-            type Value = Mapping;
-
-            fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-                formatter.write_str("a YAML mapping")
-            }
-
-            #[inline]
-            fn visit_unit<E>(self) -> Result<Self::Value, E>
-            where
-                E: serde::de::Error,
-            {
-                Ok(Mapping::new())
-            }
-
-            #[inline]
-            fn visit_map<A>(self, mut data: A) -> Result<Self::Value, A::Error>
-            where
-                A: serde::de::MapAccess<'de>,
-            {
-                let mut mapping = Mapping::new();
-
-                while let Some(key) = data.next_key()? {
-                    match mapping.entry(key) {
-                        Entry::Occupied(entry) => {
-                            return Err(serde::de::Error::custom(DuplicateKeyError { entry }));
-                        }
-                        Entry::Vacant(entry) => {
-                            let value = data.next_value()?;
-                            entry.insert(value);
-                        }
-                    }
-                }
-
-                Ok(mapping)
-            }
-        }
-
-        deserializer.deserialize_map(Visitor)
+        deserializer.deserialize_map(MappingVisitor(|_| DuplicateKey::Error))
     }
 }
 
@@ -847,5 +807,72 @@ impl Display for DuplicateKeyError<'_> {
                 formatter.write_str("in YAML map")
             }
         }
+    }
+}
+
+/// The behavior to take when a duplicate key is encountered during
+/// deserialization.
+pub enum DuplicateKey {
+    /// Immediately stop deserialization and return an error.
+    Error,
+    /// Ignore the duplicate key and continue deserialization.
+    Ignore,
+    /// Overwrite the existing value with the new value.
+    Overwrite,
+}
+
+pub(crate) struct MappingVisitor<F: FnMut(&Value) -> DuplicateKey>(pub F);
+
+impl<'de, F> serde::de::Visitor<'de> for MappingVisitor<F>
+where
+    F: FnMut(&Value) -> DuplicateKey,
+{
+    type Value = Mapping;
+
+    fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        formatter.write_str("a YAML mapping")
+    }
+
+    #[inline]
+    fn visit_unit<E>(self) -> Result<Self::Value, E>
+    where
+        E: serde::de::Error,
+    {
+        Ok(Mapping::new())
+    }
+
+    #[inline]
+    fn visit_map<A>(mut self, mut data: A) -> Result<Self::Value, A::Error>
+    where
+        A: serde::de::MapAccess<'de>,
+    {
+        let mut mapping = Mapping::new();
+
+        while let Some(key) = data.next_key()? {
+            if mapping.contains_key(&key) {
+                match self.0(&key) {
+                    DuplicateKey::Error => {
+                        let entry = match mapping.entry(key) {
+                            Entry::Occupied(entry) => entry,
+                            Entry::Vacant(_) => unreachable!(),
+                        };
+
+                        return Err(serde::de::Error::custom(DuplicateKeyError { entry }));
+                    }
+                    DuplicateKey::Ignore => {
+                        let _ = data.next_value::<Value>()?;
+                    }
+                    DuplicateKey::Overwrite => {
+                        let value = data.next_value()?;
+                        mapping.insert(key, value);
+                    }
+                }
+            } else {
+                let value = data.next_value()?;
+                mapping.insert(key, value);
+            }
+        }
+
+        Ok(mapping)
     }
 }
