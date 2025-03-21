@@ -21,6 +21,8 @@ pub use self::tagged::{Tag, TaggedValue};
 #[doc(inline)]
 pub use crate::mapping::Mapping;
 pub use crate::number::Number;
+#[doc(inline)]
+pub(crate) use de::ValueVisitor;
 
 /// Represents any valid YAML value.
 #[derive(Clone)]

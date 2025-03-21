@@ -51,9 +51,9 @@ impl Value {
     }
 }
 
-struct ValueVisitor<F: FnMut(&Value) -> DuplicateKey>(F);
+pub(crate) struct ValueVisitor<'a, F: FnMut(&Value) -> DuplicateKey>(pub &'a mut F);
 
-impl<'de, F> serde::de::Visitor<'de> for ValueVisitor<F>
+impl<'de, F> serde::de::Visitor<'de> for ValueVisitor<'_, F>
 where
     F: FnMut(&Value) -> DuplicateKey,
 {
@@ -131,16 +131,17 @@ where
         A: SeqAccess<'de>,
     {
         let de = serde::de::value::SeqAccessDeserializer::new(data);
-        let sequence = Sequence::deserialize(de)?;
+        let visitor = SequenceVisitor(&mut *self.0);
+        let sequence = de.deserialize_seq(visitor)?;
         Ok(Value::sequence(sequence))
     }
 
-    fn visit_map<A>(mut self, data: A) -> Result<Value, A::Error>
+    fn visit_map<A>(self, data: A) -> Result<Value, A::Error>
     where
         A: MapAccess<'de>,
     {
         let de = serde::de::value::MapAccessDeserializer::new(data);
-        let visitor = MappingVisitor(&mut self.0);
+        let visitor = MappingVisitor(&mut *self.0);
         let mapping = de.deserialize_map(visitor)?;
         Ok(Value::mapping(mapping))
     }
@@ -155,13 +156,54 @@ where
     }
 }
 
-fn deserialize<'de, D, F>(deserializer: D, duplicate_key_callback: F) -> Result<Value, D::Error>
+impl<'de, F> DeserializeSeed<'de> for ValueVisitor<'_, F>
+where
+    F: FnMut(&Value) -> DuplicateKey,
+{
+    type Value = Value;
+
+    fn deserialize<D>(self, deserializer: D) -> Result<Self::Value, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let start = spanned::get_marker();
+        let val = deserializer.deserialize_any(self)?;
+        let end = spanned::get_marker();
+        Ok(val.with_span(start..end))
+    }
+}
+
+struct SequenceVisitor<'a, F>(pub &'a mut F);
+
+impl<'de, F> serde::de::Visitor<'de> for SequenceVisitor<'_, F>
+where
+    F: FnMut(&Value) -> DuplicateKey,
+{
+    type Value = Sequence;
+
+    fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        formatter.write_str("a sequence")
+    }
+
+    fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error>
+    where
+        A: SeqAccess<'de>,
+    {
+        let mut values = Vec::new();
+        while let Some(value) = seq.next_element_seed(ValueVisitor(&mut *self.0))? {
+            values.push(value);
+        }
+        Ok(values)
+    }
+}
+
+fn deserialize<'de, D, F>(deserializer: D, mut duplicate_key_callback: F) -> Result<Value, D::Error>
 where
     D: serde::Deserializer<'de>,
     F: FnMut(&Value) -> DuplicateKey,
 {
     let start = spanned::get_marker();
-    let val = deserializer.deserialize_any(ValueVisitor(duplicate_key_callback))?;
+    let val = deserializer.deserialize_any(ValueVisitor(&mut duplicate_key_callback))?;
     let end = spanned::get_marker();
     Ok(val.with_span(start..end))
 }
@@ -172,7 +214,7 @@ impl<'de> Deserialize<'de> for Value {
         D: Deserializer<'de>,
     {
         let start = spanned::get_marker();
-        let val = deserializer.deserialize_any(ValueVisitor(|_| DuplicateKey::Error))?;
+        let val = deserializer.deserialize_any(ValueVisitor(&mut |_| DuplicateKey::Error))?;
         let end = spanned::get_marker();
         Ok(val.with_span(start..end))
     }
