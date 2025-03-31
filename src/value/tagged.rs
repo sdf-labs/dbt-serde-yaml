@@ -1,4 +1,4 @@
-use crate::value::de::{MapDeserializer, MapRefDeserializer, SeqDeserializer, SeqRefDeserializer};
+use crate::value::de::{MapRefDeserializer, SeqRefDeserializer};
 use crate::value::Value;
 use crate::Error;
 use serde::de::value::{BorrowedStrDeserializer, StrDeserializer};
@@ -11,6 +11,8 @@ use std::cmp::Ordering;
 use std::fmt::{self, Debug, Display};
 use std::hash::{Hash, Hasher};
 use std::mem;
+
+use super::de::ValueDeserializer;
 
 /// A representation of YAML's `!Tag` syntax, used for enums.
 ///
@@ -248,7 +250,11 @@ impl<'de> Deserializer<'de> for TaggedValue {
 
 impl<'de> EnumAccess<'de> for TaggedValue {
     type Error = Error;
-    type Variant = Value;
+    type Variant = ValueDeserializer<
+        'static,
+        fn(Value),
+        fn(Value) -> Result<Value, Box<dyn std::error::Error + 'static + Send + Sync>>,
+    >;
 
     fn variant_seed<V>(self, seed: V) -> Result<(V::Value, Self::Variant), Error>
     where
@@ -256,48 +262,7 @@ impl<'de> EnumAccess<'de> for TaggedValue {
     {
         let tag = StrDeserializer::<Error>::new(nobang(&self.tag.string));
         let value = seed.deserialize(tag)?;
-        Ok((value, self.value))
-    }
-}
-
-impl<'de> VariantAccess<'de> for Value {
-    type Error = Error;
-
-    fn unit_variant(self) -> Result<(), Error> {
-        Deserialize::deserialize(self)
-    }
-
-    fn newtype_variant_seed<T>(self, seed: T) -> Result<T::Value, Error>
-    where
-        T: DeserializeSeed<'de>,
-    {
-        seed.deserialize(self)
-    }
-
-    fn tuple_variant<V>(self, _len: usize, visitor: V) -> Result<V::Value, Error>
-    where
-        V: Visitor<'de>,
-    {
-        if let Value::Sequence(v, ..) = self {
-            Deserializer::deserialize_any(SeqDeserializer::new(v), visitor)
-        } else {
-            Err(Error::invalid_type(self.unexpected(), &"tuple variant"))
-        }
-    }
-
-    fn struct_variant<V>(
-        self,
-        _fields: &'static [&'static str],
-        visitor: V,
-    ) -> Result<V::Value, Error>
-    where
-        V: Visitor<'de>,
-    {
-        if let Value::Mapping(v, ..) = self {
-            Deserializer::deserialize_any(MapDeserializer::new(v), visitor)
-        } else {
-            Err(Error::invalid_type(self.unexpected(), &"struct variant"))
-        }
+        Ok((value, ValueDeserializer::new(self.value)))
     }
 }
 

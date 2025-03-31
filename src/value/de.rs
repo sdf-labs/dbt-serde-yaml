@@ -8,6 +8,7 @@ use serde::de::{
     SeqAccess, Unexpected, VariantAccess, Visitor,
 };
 use serde::forward_to_deserialize_any;
+use std::collections::HashSet;
 use std::fmt;
 use std::slice;
 use std::vec;
@@ -48,6 +49,26 @@ impl Value {
         let res = deserialize(de, duplicate_key_callback);
         spanned::reset_marker();
         res
+    }
+
+    /// Deserialize a [Value] into an instance of some [Deserialize] type `T`.
+    pub fn into_typed<'de, T, U, F>(
+        self,
+        mut unused_key_callback: U,
+        mut field_transformer: F,
+    ) -> Result<T, Error>
+    where
+        T: Deserialize<'de>,
+        U: FnMut(Value),
+        F: FnMut(Value) -> Result<Value, Box<dyn std::error::Error + 'static + Send + Sync>>,
+    {
+        let de = ValueDeserializer {
+            value: self,
+            unused_key_callback: Some(&mut unused_key_callback),
+            field_transformer: Some(&mut field_transformer),
+        };
+
+        T::deserialize(de)
     }
 }
 
@@ -233,12 +254,19 @@ impl Value {
     }
 }
 
-fn visit_sequence<'de, V>(sequence: Sequence, visitor: V) -> Result<V::Value, Error>
+fn visit_sequence<'de, 'a, V, U, F>(
+    sequence: Sequence,
+    visitor: V,
+    unused_key_callback: Option<&'a mut U>,
+    field_transformer: Option<&'a mut F>,
+) -> Result<V::Value, Error>
 where
     V: Visitor<'de>,
+    U: FnMut(Value),
+    F: FnMut(Value) -> Result<Value, Box<dyn std::error::Error + 'static + Send + Sync>>,
 {
     let len = sequence.len();
-    let mut deserializer = SeqDeserializer::new(sequence);
+    let mut deserializer = SeqDeserializer::new(sequence, unused_key_callback, field_transformer);
     let seq = visitor.visit_seq(&mut deserializer)?;
     let remaining = deserializer.iter.len();
     if remaining == 0 {
@@ -263,12 +291,21 @@ where
     }
 }
 
-fn visit_mapping<'de, V>(mapping: Mapping, visitor: V) -> Result<V::Value, Error>
+fn visit_mapping<'de, 'a, V, U, F>(
+    mapping: Mapping,
+    visitor: V,
+    known_keys: Option<&'static [&'static str]>,
+    unused_key_callback: Option<&'a mut U>,
+    field_transformer: Option<&'a mut F>,
+) -> Result<V::Value, Error>
 where
     V: Visitor<'de>,
+    U: FnMut(Value),
+    F: FnMut(Value) -> Result<Value, Box<dyn std::error::Error + 'static + Send + Sync>>,
 {
     let len = mapping.len();
-    let mut deserializer = MapDeserializer::new(mapping);
+    let mut deserializer =
+        MapDeserializer::new(mapping, known_keys, unused_key_callback, field_transformer);
     let map = visitor.visit_map(&mut deserializer)?;
     let remaining = deserializer.iter.len();
     if remaining == 0 {
@@ -293,118 +330,175 @@ where
     }
 }
 
-impl<'de> Deserializer<'de> for Value {
+pub struct ValueDeserializer<'a, U, F> {
+    value: Value,
+    unused_key_callback: Option<&'a mut U>,
+    field_transformer: Option<&'a mut F>,
+}
+
+impl<U, F> ValueDeserializer<'_, U, F> {
+    pub(crate) fn new(value: Value) -> Self {
+        ValueDeserializer {
+            value,
+            unused_key_callback: None,
+            field_transformer: None,
+        }
+    }
+}
+
+impl<U, F> ValueDeserializer<'_, U, F>
+where
+    U: FnMut(Value),
+    F: FnMut(Value) -> Result<Value, Box<dyn std::error::Error + 'static + Send + Sync>>,
+{
+    fn apply_transformation(
+        &mut self,
+    ) -> Result<(), Box<dyn std::error::Error + 'static + Send + Sync>> {
+        if let Some(transformer) = &mut self.field_transformer {
+            self.value = transformer(std::mem::take(&mut self.value))?;
+        }
+        Ok(())
+    }
+}
+
+impl<'de, U, F> Deserializer<'de> for ValueDeserializer<'_, U, F>
+where
+    U: FnMut(Value),
+    F: FnMut(Value) -> Result<Value, Box<dyn std::error::Error + 'static + Send + Sync>>,
+{
     type Error = Error;
 
     fn deserialize_any<V>(self, visitor: V) -> Result<V::Value, Error>
     where
         V: Visitor<'de>,
     {
-        self.broadcast_end_mark();
-        match self {
+        let value = self.value;
+        value.broadcast_end_mark();
+        match value {
             Value::Null(..) => visitor.visit_unit(),
             Value::Bool(v, ..) => visitor.visit_bool(v),
             Value::Number(n, ..) => n.deserialize_any(visitor),
             Value::String(v, ..) => visitor.visit_string(v),
-            Value::Sequence(v, ..) => visit_sequence(v, visitor),
-            Value::Mapping(v, ..) => visit_mapping(v, visitor),
+            Value::Sequence(v, ..) => {
+                visit_sequence(v, visitor, self.unused_key_callback, self.field_transformer)
+            }
+            Value::Mapping(v, ..) => visit_mapping(
+                v,
+                visitor,
+                None,
+                self.unused_key_callback,
+                self.field_transformer,
+            ),
             Value::Tagged(tagged, ..) => visitor.visit_enum(*tagged),
         }
     }
 
-    fn deserialize_bool<V>(self, visitor: V) -> Result<V::Value, Error>
+    fn deserialize_bool<V>(mut self, visitor: V) -> Result<V::Value, Error>
     where
         V: Visitor<'de>,
     {
-        self.broadcast_end_mark();
-        match self.untag() {
+        self.apply_transformation()?;
+        self.value.broadcast_end_mark();
+        match self.value.untag() {
             Value::Bool(v, ..) => visitor.visit_bool(v),
             other => Err(other.invalid_type(&visitor)),
         }
     }
 
-    fn deserialize_i8<V>(self, visitor: V) -> Result<V::Value, Error>
+    fn deserialize_i8<V>(mut self, visitor: V) -> Result<V::Value, Error>
     where
         V: Visitor<'de>,
     {
-        self.deserialize_number(visitor)
+        self.apply_transformation()?;
+        self.value.deserialize_number(visitor)
     }
 
-    fn deserialize_i16<V>(self, visitor: V) -> Result<V::Value, Error>
+    fn deserialize_i16<V>(mut self, visitor: V) -> Result<V::Value, Error>
     where
         V: Visitor<'de>,
     {
-        self.deserialize_number(visitor)
+        self.apply_transformation()?;
+        self.value.deserialize_number(visitor)
     }
 
-    fn deserialize_i32<V>(self, visitor: V) -> Result<V::Value, Error>
+    fn deserialize_i32<V>(mut self, visitor: V) -> Result<V::Value, Error>
     where
         V: Visitor<'de>,
     {
-        self.deserialize_number(visitor)
+        self.apply_transformation()?;
+        self.value.deserialize_number(visitor)
     }
 
-    fn deserialize_i64<V>(self, visitor: V) -> Result<V::Value, Error>
+    fn deserialize_i64<V>(mut self, visitor: V) -> Result<V::Value, Error>
     where
         V: Visitor<'de>,
     {
-        self.deserialize_number(visitor)
+        self.apply_transformation()?;
+        self.value.deserialize_number(visitor)
     }
 
-    fn deserialize_i128<V>(self, visitor: V) -> Result<V::Value, Error>
+    fn deserialize_i128<V>(mut self, visitor: V) -> Result<V::Value, Error>
     where
         V: Visitor<'de>,
     {
-        self.deserialize_number(visitor)
+        self.apply_transformation()?;
+        self.value.deserialize_number(visitor)
     }
 
-    fn deserialize_u8<V>(self, visitor: V) -> Result<V::Value, Error>
+    fn deserialize_u8<V>(mut self, visitor: V) -> Result<V::Value, Error>
     where
         V: Visitor<'de>,
     {
-        self.deserialize_number(visitor)
+        self.apply_transformation()?;
+        self.value.deserialize_number(visitor)
     }
 
-    fn deserialize_u16<V>(self, visitor: V) -> Result<V::Value, Error>
+    fn deserialize_u16<V>(mut self, visitor: V) -> Result<V::Value, Error>
     where
         V: Visitor<'de>,
     {
-        self.deserialize_number(visitor)
+        self.apply_transformation()?;
+        self.value.deserialize_number(visitor)
     }
 
-    fn deserialize_u32<V>(self, visitor: V) -> Result<V::Value, Error>
+    fn deserialize_u32<V>(mut self, visitor: V) -> Result<V::Value, Error>
     where
         V: Visitor<'de>,
     {
-        self.deserialize_number(visitor)
+        self.apply_transformation()?;
+        self.value.deserialize_number(visitor)
     }
 
-    fn deserialize_u64<V>(self, visitor: V) -> Result<V::Value, Error>
+    fn deserialize_u64<V>(mut self, visitor: V) -> Result<V::Value, Error>
     where
         V: Visitor<'de>,
     {
-        self.deserialize_number(visitor)
+        self.apply_transformation()?;
+        self.value.deserialize_number(visitor)
     }
 
-    fn deserialize_u128<V>(self, visitor: V) -> Result<V::Value, Error>
+    fn deserialize_u128<V>(mut self, visitor: V) -> Result<V::Value, Error>
     where
         V: Visitor<'de>,
     {
-        self.deserialize_number(visitor)
+        self.apply_transformation()?;
+        self.value.deserialize_number(visitor)
     }
 
-    fn deserialize_f32<V>(self, visitor: V) -> Result<V::Value, Error>
+    fn deserialize_f32<V>(mut self, visitor: V) -> Result<V::Value, Error>
     where
         V: Visitor<'de>,
     {
-        self.deserialize_number(visitor)
+        self.apply_transformation()?;
+        self.value.deserialize_number(visitor)
     }
 
-    fn deserialize_f64<V>(self, visitor: V) -> Result<V::Value, Error>
+    fn deserialize_f64<V>(mut self, visitor: V) -> Result<V::Value, Error>
     where
         V: Visitor<'de>,
     {
-        self.deserialize_number(visitor)
+        self.apply_transformation()?;
+        self.value.deserialize_number(visitor)
     }
 
     fn deserialize_char<V>(self, visitor: V) -> Result<V::Value, Error>
@@ -421,12 +515,13 @@ impl<'de> Deserializer<'de> for Value {
         self.deserialize_string(visitor)
     }
 
-    fn deserialize_string<V>(self, visitor: V) -> Result<V::Value, Error>
+    fn deserialize_string<V>(mut self, visitor: V) -> Result<V::Value, Error>
     where
         V: Visitor<'de>,
     {
-        self.broadcast_end_mark();
-        match self.untag() {
+        self.apply_transformation()?;
+        self.value.broadcast_end_mark();
+        match self.value.untag() {
             Value::String(v, ..) => visitor.visit_string(v),
             other => Err(other.invalid_type(&visitor)),
         }
@@ -439,14 +534,17 @@ impl<'de> Deserializer<'de> for Value {
         self.deserialize_byte_buf(visitor)
     }
 
-    fn deserialize_byte_buf<V>(self, visitor: V) -> Result<V::Value, Error>
+    fn deserialize_byte_buf<V>(mut self, visitor: V) -> Result<V::Value, Error>
     where
         V: Visitor<'de>,
     {
-        self.broadcast_end_mark();
-        match self.untag() {
+        self.apply_transformation()?;
+        self.value.broadcast_end_mark();
+        match self.value.untag() {
             Value::String(v, ..) => visitor.visit_string(v),
-            Value::Sequence(v, ..) => visit_sequence(v, visitor),
+            Value::Sequence(v, ..) => {
+                visit_sequence(v, visitor, self.unused_key_callback, self.field_transformer)
+            }
             other => Err(other.invalid_type(&visitor)),
         }
     }
@@ -455,21 +553,22 @@ impl<'de> Deserializer<'de> for Value {
     where
         V: Visitor<'de>,
     {
-        self.broadcast_end_mark();
-        match self {
+        self.value.broadcast_end_mark();
+        match self.value {
             Value::Null(..) => visitor.visit_none(),
             _ => visitor.visit_some(self),
         }
     }
 
-    fn deserialize_unit<V>(self, visitor: V) -> Result<V::Value, Error>
+    fn deserialize_unit<V>(mut self, visitor: V) -> Result<V::Value, Error>
     where
         V: Visitor<'de>,
     {
-        self.broadcast_end_mark();
-        match self {
+        self.apply_transformation()?;
+        self.value.broadcast_end_mark();
+        match self.value {
             Value::Null(..) => visitor.visit_unit(),
-            _ => Err(self.invalid_type(&visitor)),
+            _ => Err(self.value.invalid_type(&visitor)),
         }
     }
 
@@ -488,18 +587,26 @@ impl<'de> Deserializer<'de> for Value {
     where
         V: Visitor<'de>,
     {
-        self.broadcast_end_mark();
+        self.value.broadcast_end_mark();
         visitor.visit_newtype_struct(self)
     }
 
-    fn deserialize_seq<V>(self, visitor: V) -> Result<V::Value, Error>
+    fn deserialize_seq<V>(mut self, visitor: V) -> Result<V::Value, Error>
     where
         V: Visitor<'de>,
     {
-        self.broadcast_end_mark();
-        match self.untag() {
-            Value::Sequence(v, ..) => visit_sequence(v, visitor),
-            Value::Null(..) => visit_sequence(Sequence::new(), visitor),
+        self.apply_transformation()?;
+        self.value.broadcast_end_mark();
+        match self.value.untag() {
+            Value::Sequence(v, ..) => {
+                visit_sequence(v, visitor, self.unused_key_callback, self.field_transformer)
+            }
+            Value::Null(..) => visit_sequence(
+                Sequence::new(),
+                visitor,
+                self.unused_key_callback,
+                self.field_transformer,
+            ),
             other => Err(other.invalid_type(&visitor)),
         }
     }
@@ -523,33 +630,63 @@ impl<'de> Deserializer<'de> for Value {
         self.deserialize_seq(visitor)
     }
 
-    fn deserialize_map<V>(self, visitor: V) -> Result<V::Value, Error>
+    fn deserialize_map<V>(mut self, visitor: V) -> Result<V::Value, Error>
     where
         V: Visitor<'de>,
     {
-        self.broadcast_end_mark();
-        match self.untag() {
-            Value::Mapping(v, ..) => visit_mapping(v, visitor),
-            Value::Null(..) => visit_mapping(Mapping::new(), visitor),
+        self.apply_transformation()?;
+        self.value.broadcast_end_mark();
+        match self.value.untag() {
+            Value::Mapping(v, ..) => visit_mapping(
+                v,
+                visitor,
+                None,
+                self.unused_key_callback,
+                self.field_transformer,
+            ),
+            Value::Null(..) => visit_mapping(
+                Mapping::new(),
+                visitor,
+                None,
+                self.unused_key_callback,
+                self.field_transformer,
+            ),
             other => Err(other.invalid_type(&visitor)),
         }
     }
 
     fn deserialize_struct<V>(
-        self,
+        mut self,
         _name: &'static str,
-        _fields: &'static [&'static str],
+        fields: &'static [&'static str],
         visitor: V,
     ) -> Result<V::Value, Error>
     where
         V: Visitor<'de>,
     {
-        self.broadcast_end_mark();
-        self.deserialize_map(visitor)
+        self.apply_transformation()?;
+        self.value.broadcast_end_mark();
+        match self.value.untag() {
+            Value::Mapping(v, ..) => visit_mapping(
+                v,
+                visitor,
+                Some(fields),
+                self.unused_key_callback,
+                self.field_transformer,
+            ),
+            Value::Null(..) => visit_mapping(
+                Mapping::new(),
+                visitor,
+                Some(fields),
+                self.unused_key_callback,
+                self.field_transformer,
+            ),
+            other => Err(other.invalid_type(&visitor)),
+        }
     }
 
     fn deserialize_enum<V>(
-        self,
+        mut self,
         _name: &str,
         _variants: &'static [&'static str],
         visitor: V,
@@ -557,14 +694,19 @@ impl<'de> Deserializer<'de> for Value {
     where
         V: Visitor<'de>,
     {
+        self.apply_transformation()?;
+        self.value.broadcast_end_mark();
+
         let tag;
-        visitor.visit_enum(match self {
+        visitor.visit_enum(match self.value {
             Value::Tagged(tagged, ..) => EnumDeserializer {
                 tag: {
                     tag = tagged.tag.string;
                     tagged::nobang(&tag)
                 },
                 value: Some(tagged.value),
+                unused_key_callback: self.unused_key_callback,
+                field_transformer: self.field_transformer,
             },
             Value::String(variant, ..) => EnumDeserializer {
                 tag: {
@@ -572,6 +714,8 @@ impl<'de> Deserializer<'de> for Value {
                     &tag
                 },
                 value: None,
+                unused_key_callback: self.unused_key_callback,
+                field_transformer: self.field_transformer,
             },
             other => {
                 return Err(Error::invalid_type(
@@ -593,20 +737,26 @@ impl<'de> Deserializer<'de> for Value {
     where
         V: Visitor<'de>,
     {
-        self.broadcast_end_mark();
+        self.value.broadcast_end_mark();
         drop(self);
         visitor.visit_unit()
     }
 }
 
-struct EnumDeserializer<'a> {
+struct EnumDeserializer<'a, U, F> {
     tag: &'a str,
     value: Option<Value>,
+    unused_key_callback: Option<&'a mut U>,
+    field_transformer: Option<&'a mut F>,
 }
 
-impl<'de> EnumAccess<'de> for EnumDeserializer<'_> {
+impl<'de, 'a, U, F> EnumAccess<'de> for EnumDeserializer<'a, U, F>
+where
+    U: FnMut(Value),
+    F: FnMut(Value) -> Result<Value, Box<dyn std::error::Error + 'static + Send + Sync>>,
+{
     type Error = Error;
-    type Variant = VariantDeserializer;
+    type Variant = VariantDeserializer<'a, U, F>;
 
     fn variant_seed<V>(self, seed: V) -> Result<(V::Value, Self::Variant), Error>
     where
@@ -614,16 +764,26 @@ impl<'de> EnumAccess<'de> for EnumDeserializer<'_> {
     {
         let str_de = StrDeserializer::<Error>::new(self.tag);
         let variant = seed.deserialize(str_de)?;
-        let visitor = VariantDeserializer { value: self.value };
+        let visitor = VariantDeserializer {
+            value: self.value,
+            unused_key_callback: self.unused_key_callback,
+            field_transformer: self.field_transformer,
+        };
         Ok((variant, visitor))
     }
 }
 
-struct VariantDeserializer {
+struct VariantDeserializer<'a, U, F> {
     value: Option<Value>,
+    unused_key_callback: Option<&'a mut U>,
+    field_transformer: Option<&'a mut F>,
 }
 
-impl<'de> VariantAccess<'de> for VariantDeserializer {
+impl<'de, U, F> VariantAccess<'de> for VariantDeserializer<'_, U, F>
+where
+    U: FnMut(Value),
+    F: FnMut(Value) -> Result<Value, Box<dyn std::error::Error + 'static + Send + Sync>>,
+{
     type Error = Error;
 
     fn unit_variant(self) -> Result<(), Error> {
@@ -638,7 +798,11 @@ impl<'de> VariantAccess<'de> for VariantDeserializer {
         T: DeserializeSeed<'de>,
     {
         match self.value {
-            Some(value) => value.newtype_variant_seed(seed),
+            Some(value) => seed.deserialize(ValueDeserializer {
+                value,
+                unused_key_callback: self.unused_key_callback,
+                field_transformer: self.field_transformer,
+            }),
             None => Err(Error::invalid_type(
                 Unexpected::UnitVariant,
                 &"newtype variant",
@@ -646,13 +810,16 @@ impl<'de> VariantAccess<'de> for VariantDeserializer {
         }
     }
 
-    fn tuple_variant<V>(self, len: usize, visitor: V) -> Result<V::Value, Error>
+    fn tuple_variant<V>(self, _len: usize, visitor: V) -> Result<V::Value, Error>
     where
         V: Visitor<'de>,
     {
         match self.value {
-            Some(value) => value.tuple_variant(len, visitor),
-            None => Err(Error::invalid_type(
+            Some(Value::Sequence(v, ..)) => Deserializer::deserialize_any(
+                SeqDeserializer::new(v, self.unused_key_callback, self.field_transformer),
+                visitor,
+            ),
+            _ => Err(Error::invalid_type(
                 Unexpected::UnitVariant,
                 &"tuple variant",
             )),
@@ -668,8 +835,16 @@ impl<'de> VariantAccess<'de> for VariantDeserializer {
         V: Visitor<'de>,
     {
         match self.value {
-            Some(value) => value.struct_variant(fields, visitor),
-            None => Err(Error::invalid_type(
+            Some(Value::Mapping(v, ..)) => Deserializer::deserialize_any(
+                MapDeserializer::new(
+                    v,
+                    Some(fields),
+                    self.unused_key_callback,
+                    self.field_transformer,
+                ),
+                visitor,
+            ),
+            _ => Err(Error::invalid_type(
                 Unexpected::UnitVariant,
                 &"struct variant",
             )),
@@ -677,19 +852,97 @@ impl<'de> VariantAccess<'de> for VariantDeserializer {
     }
 }
 
-pub(crate) struct SeqDeserializer {
-    iter: vec::IntoIter<Value>,
-}
+impl<'de, U, F> VariantAccess<'de> for ValueDeserializer<'_, U, F>
+where
+    U: FnMut(Value),
+    F: FnMut(Value) -> Result<Value, Box<dyn std::error::Error + 'static + Send + Sync>>,
+{
+    type Error = Error;
 
-impl SeqDeserializer {
-    pub(crate) fn new(vec: Vec<Value>) -> Self {
-        SeqDeserializer {
-            iter: vec.into_iter(),
+    fn unit_variant(self) -> Result<(), Error> {
+        Deserialize::deserialize(self)
+    }
+
+    fn newtype_variant_seed<T>(self, seed: T) -> Result<T::Value, Error>
+    where
+        T: DeserializeSeed<'de>,
+    {
+        seed.deserialize(self)
+    }
+
+    fn tuple_variant<V>(self, _len: usize, visitor: V) -> Result<V::Value, Error>
+    where
+        V: Visitor<'de>,
+    {
+        if let Value::Sequence(v, ..) = self.value {
+            Deserializer::deserialize_any(
+                SeqDeserializer::new(v, self.unused_key_callback, self.field_transformer),
+                visitor,
+            )
+        } else {
+            Err(Error::invalid_type(
+                self.value.unexpected(),
+                &"tuple variant",
+            ))
+        }
+    }
+
+    fn struct_variant<V>(
+        self,
+        fields: &'static [&'static str],
+        visitor: V,
+    ) -> Result<V::Value, Error>
+    where
+        V: Visitor<'de>,
+    {
+        if let Value::Mapping(v, ..) = self.value {
+            Deserializer::deserialize_any(
+                MapDeserializer::new(
+                    v,
+                    Some(fields),
+                    self.unused_key_callback,
+                    self.field_transformer,
+                ),
+                visitor,
+            )
+        } else {
+            Err(Error::invalid_type(
+                self.value.unexpected(),
+                &"struct variant",
+            ))
         }
     }
 }
 
-impl<'de> Deserializer<'de> for SeqDeserializer {
+pub(crate) struct SeqDeserializer<'a, U, F> {
+    iter: vec::IntoIter<Value>,
+    unused_key_callback: Option<&'a mut U>,
+    field_transformer: Option<&'a mut F>,
+}
+
+impl<'a, U, F> SeqDeserializer<'a, U, F>
+where
+    U: FnMut(Value),
+    F: FnMut(Value) -> Result<Value, Box<dyn std::error::Error + 'static + Send + Sync>>,
+{
+    pub(crate) fn new(
+        vec: Vec<Value>,
+        unused_key_callback: Option<&'a mut U>,
+        field_transformer: Option<&'a mut F>,
+    ) -> Self {
+        SeqDeserializer {
+            iter: vec.into_iter(),
+            unused_key_callback,
+            field_transformer,
+        }
+    }
+}
+
+impl<'de, U, F> Deserializer<'de> for SeqDeserializer<'_, U, F>
+where
+    U: FnMut(Value),
+    F: FnMut(Value) -> Result<Value, Box<dyn std::error::Error + 'static + Send + Sync>>,
+{
     type Error = Error;
 
     #[inline]
@@ -726,7 +979,11 @@ impl<'de> Deserializer<'de> for SeqDeserializer {
     }
 }
 
-impl<'de> SeqAccess<'de> for SeqDeserializer {
+impl<'de, U, F> SeqAccess<'de> for SeqDeserializer<'_, U, F>
+where
+    U: FnMut(Value),
+    F: FnMut(Value) -> Result<Value, Box<dyn std::error::Error + 'static + Send + Sync>>,
+{
     type Error = Error;
 
     fn next_element_seed<T>(&mut self, seed: T) -> Result<Option<T::Value>, Error>
@@ -734,7 +991,14 @@ impl<'de> SeqAccess<'de> for SeqDeserializer {
         T: DeserializeSeed<'de>,
     {
         match self.iter.next() {
-            Some(value) => seed.deserialize(value).map(Some),
+            Some(value) => {
+                let deserializer = ValueDeserializer {
+                    value,
+                    unused_key_callback: self.unused_key_callback.as_deref_mut(),
+                    field_transformer: self.field_transformer.as_deref_mut(),
+                };
+                seed.deserialize(deserializer).map(Some)
+            }
             None => Ok(None),
         }
     }
@@ -747,21 +1011,40 @@ impl<'de> SeqAccess<'de> for SeqDeserializer {
     }
 }
 
-pub(crate) struct MapDeserializer {
+pub(crate) struct MapDeserializer<'a, U, F> {
     iter: <Mapping as IntoIterator>::IntoIter,
     value: Option<Value>,
+    known_keys: Option<HashSet<&'static str>>,
+    unused_key_callback: Option<&'a mut U>,
+    field_transformer: Option<&'a mut F>,
 }
 
-impl MapDeserializer {
-    pub(crate) fn new(map: Mapping) -> Self {
+impl<'a, U, F> MapDeserializer<'a, U, F>
+where
+    U: FnMut(Value),
+    F: FnMut(Value) -> Result<Value, Box<dyn std::error::Error + 'static + Send + Sync>>,
+{
+    pub(crate) fn new(
+        map: Mapping,
+        known_keys: Option<&'static [&'static str]>,
+        unused_key_callback: Option<&'a mut U>,
+        field_transformer: Option<&'a mut F>,
+    ) -> Self {
         MapDeserializer {
             iter: map.into_iter(),
             value: None,
+            known_keys: known_keys.map(|keys| keys.iter().copied().collect()),
+            unused_key_callback,
+            field_transformer,
         }
     }
 }
 
-impl<'de> MapAccess<'de> for MapDeserializer {
+impl<'de, U, F> MapAccess<'de> for MapDeserializer<'_, U, F>
+where
+    U: FnMut(Value),
+    F: FnMut(Value) -> Result<Value, Box<dyn std::error::Error + 'static + Send + Sync>>,
+{
     type Error = Error;
 
     fn next_key_seed<T>(&mut self, seed: T) -> Result<Option<T::Value>, Error>
@@ -770,8 +1053,24 @@ impl<'de> MapAccess<'de> for MapDeserializer {
     {
         match self.iter.next() {
             Some((key, value)) => {
+                let is_unused = if let Some(known_keys) = &self.known_keys {
+                    match key.as_str() {
+                        Some(key) if known_keys.contains(key) => false,
+                        _ => true,
+                    }
+                } else {
+                    false
+                };
+
+                if is_unused {
+                    if let Some(callback) = &mut self.unused_key_callback {
+                        callback(key.clone());
+                    }
+                }
+
                 self.value = Some(value);
-                seed.deserialize(key).map(Some)
+                seed.deserialize(ValueDeserializer::<U, F>::new(key))
+                    .map(Some)
             }
             None => Ok(None),
         }
@@ -782,7 +1081,11 @@ impl<'de> MapAccess<'de> for MapDeserializer {
         T: DeserializeSeed<'de>,
     {
         match self.value.take() {
-            Some(value) => seed.deserialize(value),
+            Some(value) => seed.deserialize(ValueDeserializer {
+                value,
+                unused_key_callback: self.unused_key_callback.as_deref_mut(),
+                field_transformer: self.field_transformer.as_deref_mut(),
+            }),
             None => panic!("visit_value called before visit_key"),
         }
     }
@@ -795,7 +1098,11 @@ impl<'de> MapAccess<'de> for MapDeserializer {
     }
 }
 
-impl<'de> Deserializer<'de> for MapDeserializer {
+impl<'de, U, F> Deserializer<'de> for MapDeserializer<'_, U, F>
+where
+    U: FnMut(Value),
+    F: FnMut(Value) -> Result<Value, Box<dyn std::error::Error + 'static + Send + Sync>>,
+{
     type Error = Error;
 
     #[inline]
