@@ -153,7 +153,7 @@ where
     T: DeserializeOwned,
 {
     value.broadcast_start_mark();
-    let res = Deserialize::deserialize(value);
+    let res = Deserialize::deserialize(value.into_deserializer());
     spanned::reset_marker();
     res
 }
@@ -752,37 +752,37 @@ impl Value {
 
 // Default constructors
 impl Value {
-    /// Construct a Null Value.
+    /// Construct a Null Value with no location information.
     pub const fn null() -> Value {
         Value::Null(Span::zero())
     }
 
-    /// Construct a Bool Value.
+    /// Construct a Bool Value with no location information.
     pub const fn bool(b: bool) -> Value {
         Value::Bool(b, Span::zero())
     }
 
-    /// Construct a Number Value.
+    /// Construct a Number Value with no location information.
     pub const fn number(n: Number) -> Value {
         Value::Number(n, Span::zero())
     }
 
-    /// Construct a String Value.
+    /// Construct a String Value with no location information.
     pub const fn string(s: String) -> Value {
         Value::String(s, Span::zero())
     }
 
-    /// Construct a Sequence Value.
+    /// Construct a Sequence Value with no location information.
     pub fn sequence(seq: Sequence) -> Value {
         Value::Sequence(seq, Span::zero())
     }
 
-    /// Construct a Mapping Value.
+    /// Construct a Mapping Value with no location information.
     pub fn mapping(map: Mapping) -> Value {
         Value::Mapping(map, Span::zero())
     }
 
-    /// Construct a Tagged Value.
+    /// Construct a Tagged Value with no location information.
     pub fn tagged(tagged: impl Into<Box<TaggedValue>>) -> Value {
         Value::Tagged(tagged.into(), Span::zero())
     }
@@ -808,9 +808,13 @@ impl Hash for Value {
 }
 
 impl IntoDeserializer<'_, Error> for Value {
-    type Deserializer = Self;
+    type Deserializer = de::ValueDeserializer<
+        'static,
+        fn(Value),
+        fn(Value) -> Result<Value, Box<dyn std::error::Error + 'static + Send + Sync>>,
+    >;
 
     fn into_deserializer(self) -> Self::Deserializer {
-        self
+        de::ValueDeserializer::new(self)
     }
 }

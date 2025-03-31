@@ -59,6 +59,202 @@ fn test_into_deserializer() {
 }
 
 #[test]
+fn test_into_typed() {
+    let mut unused_keys = vec![];
+
+    fn transformer(v: Value) -> Result<Value, Box<dyn std::error::Error + Send + Sync>> {
+        if v.is_string() {
+            Ok((v.as_str().unwrap().to_string() + " name").into())
+        } else {
+            Ok(v)
+        }
+    }
+
+    let value = dbt_serde_yaml::from_str::<Value>("xyz").unwrap();
+    let s: String = value
+        .into_typed(
+            |key: Value| {
+                unused_keys.push(key);
+            },
+            Ok,
+        )
+        .unwrap();
+    assert!(unused_keys.is_empty());
+    assert_eq!(s, "xyz");
+
+    let value = dbt_serde_yaml::from_str::<Value>("- first\n- second\n- third").unwrap();
+    let arr: Vec<String> = value
+        .into_typed(
+            |key: Value| {
+                unused_keys.push(key);
+            },
+            transformer,
+        )
+        .unwrap();
+    assert!(unused_keys.is_empty());
+    assert_eq!(arr, &["first name", "second name", "third name"]);
+
+    #[derive(Debug, Deserialize, PartialEq)]
+    struct Test {
+        first: String,
+        second: u32,
+    }
+    #[derive(Debug, Deserialize, PartialEq)]
+    struct Test2 {
+        first: Value,
+        third: u32,
+    }
+
+    let value = dbt_serde_yaml::from_str::<Value>(indoc! {"
+        first: abc
+        second: 99
+        third: 100
+        "})
+    .unwrap();
+
+    let test: Test = value
+        .clone()
+        .into_typed(
+            |key: Value| {
+                unused_keys.push(key);
+            },
+            transformer,
+        )
+        .unwrap();
+    assert_eq!(unused_keys, vec![Value::string("third".to_string())]);
+    assert_eq!(
+        test,
+        Test {
+            first: "abc name".to_string(),
+            second: 99
+        }
+    );
+
+    unused_keys.clear();
+    let test2: Test2 = value
+        .into_typed(
+            |key: Value| {
+                unused_keys.push(key);
+            },
+            transformer,
+        )
+        .unwrap();
+    assert_eq!(unused_keys, vec![Value::string("second".to_string())]);
+    assert_eq!(
+        test2,
+        Test2 {
+            // field_transform is not applied to `Value`-typed fields:
+            first: Value::string("abc".to_string()),
+            third: 100
+        }
+    );
+    unused_keys.clear();
+
+    #[derive(Debug, Deserialize, PartialEq)]
+    struct Test3 {
+        first: Test,
+        seconds: Vec<Value>,
+        third: Option<Value>,
+        fourth: Option<String>,
+    }
+
+    let value = dbt_serde_yaml::from_str::<Value>(indoc! {"
+        first:
+          first: abc
+          second: 99
+          third: 100
+        seconds:
+          -   first: A
+              second: 1
+              third: 1
+          -   first: B
+              third: 2
+        fourth: xyz
+        third: xyz
+        "});
+    let test3: Test3 = value
+        .unwrap()
+        .into_typed(
+            |key: Value| {
+                unused_keys.push(key);
+            },
+            transformer,
+        )
+        .unwrap();
+
+    assert_eq!(unused_keys, vec![Value::string("third".to_string())]);
+    unused_keys.clear();
+
+    assert_eq!(
+        test3.first,
+        Test {
+            first: "abc name".to_string(),
+            second: 99
+        }
+    );
+    assert_eq!(test3.third, Some(Value::string("xyz".to_string())));
+    assert_eq!(test3.fourth, Some("xyz name".to_string()));
+    assert_eq!(test3.seconds.len(), 2);
+    let test2_1: Test2 = dbg!(test3.seconds[0].clone())
+        .into_typed(
+            |key: Value| {
+                unused_keys.push(key);
+            },
+            |v| {
+                if let Some(n) = v.as_u64() {
+                    Ok(Value::number(Number::from(n + 2)))
+                } else {
+                    Ok(v)
+                }
+            },
+        )
+        .unwrap();
+    assert_eq!(unused_keys, vec![Value::string("second".to_string())]);
+    assert_eq!(
+        test2_1,
+        Test2 {
+            first: Value::string("A".to_string()),
+            third: 3
+        }
+    );
+}
+
+#[test]
+fn test_into_typed_external_err() {
+    #[derive(Debug, PartialEq)]
+    struct Error {
+        msg: String,
+    }
+    impl std::fmt::Display for Error {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            write!(f, "Error: {}", self.msg)
+        }
+    }
+    impl std::error::Error for Error {}
+
+    let value = dbt_serde_yaml::from_str::<Value>("xyz").unwrap();
+    let err = value
+        .into_typed::<String, _, _>(
+            |key: Value| {
+                panic!("unexpected key {:?}", key);
+            },
+            |v| {
+                Err(Error {
+                    msg: format!("error {}", v.as_str().unwrap()),
+                }
+                .into())
+            },
+        )
+        .unwrap_err();
+    assert_eq!(
+        err.into_external().unwrap().downcast::<Error>().unwrap(),
+        Box::new(Error {
+            msg: "error xyz".to_string()
+        })
+    );
+}
+
+#[test]
 fn test_merge() {
     // From https://yaml.org/type/merge.html.
     let yaml = indoc! {"

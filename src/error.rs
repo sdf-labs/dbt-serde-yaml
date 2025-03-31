@@ -36,6 +36,8 @@ pub(crate) enum ErrorImpl {
     EmptyTag,
     FailedToParseNumber,
 
+    External(Box<dyn StdError + 'static + Send + Sync>),
+
     Shared(Arc<ErrorImpl>),
 }
 
@@ -102,6 +104,16 @@ impl Error {
     pub fn location(&self) -> Option<Location> {
         self.0.location()
     }
+
+    /// Unwraps the error and returns the underlying error if it is an external
+    /// error; otherwise returns `None`.
+    pub fn into_external(self) -> Option<Box<dyn StdError + 'static + Send + Sync>> {
+        if let ErrorImpl::External(err) = *self.0 {
+            Some(err)
+        } else {
+            None
+        }
+    }
 }
 
 pub(crate) fn new(inner: ErrorImpl) -> Error {
@@ -147,6 +159,12 @@ impl From<emitter::Error> for Error {
     }
 }
 
+impl From<Box<dyn StdError + 'static + Send + Sync>> for Error {
+    fn from(err: Box<dyn StdError + 'static + Send + Sync>) -> Self {
+        Error(Box::new(ErrorImpl::External(err)))
+    }
+}
+
 impl StdError for Error {
     fn source(&self) -> Option<&(dyn StdError + 'static)> {
         self.0.source()
@@ -189,6 +207,7 @@ impl ErrorImpl {
             ErrorImpl::Io(err) => err.source(),
             ErrorImpl::FromUtf8(err) => err.source(),
             ErrorImpl::Shared(err) => err.source(),
+            ErrorImpl::External(err) => err.source(),
             _ => None,
         }
     }
@@ -241,6 +260,7 @@ impl ErrorImpl {
             }
             ErrorImpl::EmptyTag => f.write_str("empty YAML tag is not allowed"),
             ErrorImpl::FailedToParseNumber => f.write_str("failed to parse YAML number"),
+            ErrorImpl::External(err) => Display::fmt(err.as_ref(), f),
             ErrorImpl::Shared(_) => unreachable!(),
         }
     }
