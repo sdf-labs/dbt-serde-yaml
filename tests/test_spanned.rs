@@ -141,15 +141,22 @@ fn test_spanned_ser() {
 
 #[test]
 fn test_spanned_de_from_value() {
+    #[derive(Deserialize, Debug, PartialEq, Eq)]
+    struct Thing;
+
     #[derive(Deserialize)]
     struct Point {
         x: Spanned<f64>,
-        y: Spanned<f64>,
+        y: Spanned<dbt_serde_yaml::Value>,
+        a: Spanned<Option<f64>>,
+        t: Spanned<Thing>,
     }
 
     let yaml = indoc! {"
         x: 1.0
         y: 2.0
+        z: 3.0
+        t: null
     "};
 
     let value: dbt_serde_yaml::Value = dbt_serde_yaml::from_str(yaml).unwrap();
@@ -158,10 +165,12 @@ fn test_spanned_de_from_value() {
     assert!(point.has_valid_span());
     assert_eq!(point.span().start.line, 1);
     assert_eq!(point.span().start.column, 1);
-    assert_eq!(point.span().end.line, 3);
+    assert_eq!(point.span().end.line, 5);
     assert_eq!(point.span().end.column, 1);
 
     assert_eq!(*point.x, 1.0);
+    assert!(point.a.is_none());
+    assert_eq!(*point.t, Thing {});
     assert!(point.x.has_valid_span());
     assert!(point.y.has_valid_span());
     assert_eq!(point.x.span().start.index, 3);
@@ -178,4 +187,23 @@ fn test_spanned_de_from_value() {
         yaml[point.y.span().start.index..point.y.span().end.index].trim(),
         "2.0"
     );
+}
+
+fn my_custom_deserialize<'de, D>(deserializer: D) -> Result<Spanned<f64>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let value: f64 = f64::deserialize(deserializer)?;
+    Ok(Spanned::new(value))
+}
+
+#[test]
+fn test_custom_deserialize_with() {
+    #[derive(Deserialize, Serialize, PartialEq, Debug)]
+    struct Thing {
+        #[serde(deserialize_with = "my_custom_deserialize")]
+        x: Spanned<f64>,
+        #[serde(deserialize_with = "my_custom_deserialize")]
+        y: Spanned<f64>,
+    }
 }
