@@ -56,13 +56,13 @@ impl Span {
 impl Span {
     /// Create a new span with the specified filename.
     pub fn new_with_filename(
-        start: Marker,
-        end: Marker,
+        start: impl Into<Marker>,
+        end: impl Into<Marker>,
         filename: impl Into<Arc<PathBuf>>,
     ) -> Self {
         Span {
-            start,
-            end,
+            start: start.into(),
+            end: end.into(),
             filename: Some(filename.into()),
         }
     }
@@ -124,6 +124,12 @@ impl From<Range<Option<Marker>>> for Span {
     }
 }
 
+impl From<Marker> for Span {
+    fn from(marker: Marker) -> Self {
+        Span::new(marker, marker)
+    }
+}
+
 /// A location in the source string.
 #[derive(Copy, Clone, PartialEq, PartialOrd)]
 pub struct Marker {
@@ -164,6 +170,21 @@ impl Marker {
             column: 0,
         }
     }
+
+    /// Return the line number of this location.
+    pub fn line(&self) -> usize {
+        self.line
+    }
+
+    /// Return the column number of this location.
+    pub fn column(&self) -> usize {
+        self.column
+    }
+
+    /// Return the index of this location.
+    pub fn index(&self) -> usize {
+        self.index
+    }
 }
 
 impl Default for Marker {
@@ -191,6 +212,6 @@ impl Debug for Marker {
 
 impl Display for Marker {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}:{}", self.line, self.column)
+        write!(f, "line {} column {}", self.line, self.column)
     }
 }

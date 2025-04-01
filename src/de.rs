@@ -642,7 +642,7 @@ impl<'de, 'document> DeserializerFromEvents<'de, 'document> {
         let previous_depth = self.remaining_depth;
         self.remaining_depth = match previous_depth.checked_sub(1) {
             Some(depth) => depth,
-            None => return Err(error::new(ErrorImpl::RecursionLimitExceeded(mark))),
+            None => return Err(error::new(ErrorImpl::RecursionLimitExceeded(mark.into()))),
         };
         let result = f(self);
         self.remaining_depth = previous_depth;

@@ -169,7 +169,7 @@ fn test_missing_enum_tag() {
         "V": 16
         "other": 32
     "#};
-    let expected = "invalid type: map, expected a YAML tag starting with '!'";
+    let expected = "invalid type: map, expected a YAML tag starting with '!' at line 1 column 1";
     test_error::<E>(yaml, expected);
 }
 
@@ -271,7 +271,7 @@ fn test_struct_from_sequence() {
     let yaml = indoc! {"
         [0, 0]
     "};
-    let expected = "invalid type: sequence, expected struct Struct";
+    let expected = "invalid type: sequence, expected struct Struct at line 1 column 1";
     test_error::<Struct>(yaml, expected);
 }
 
@@ -358,7 +358,7 @@ fn test_infinite_recursion_objects() {
     }
 
     let yaml = "&a {'x': *a}";
-    let expected = "recursion limit exceeded";
+    let expected = "recursion limit exceeded at line 1 column 1";
     test_error::<S>(yaml, expected);
 }
 
@@ -372,7 +372,7 @@ fn test_infinite_recursion_arrays() {
     );
 
     let yaml = "&a [0, *a]";
-    let expected = "recursion limit exceeded";
+    let expected = "recursion limit exceeded at line 1 column 1";
     test_error::<S>(yaml, expected);
 }
 
@@ -383,7 +383,7 @@ fn test_infinite_recursion_newtype() {
     pub struct S(#[allow(dead_code)] pub Option<Box<S>>);
 
     let yaml = "&a [*a]";
-    let expected = "recursion limit exceeded";
+    let expected = "recursion limit exceeded at line 1 column 1";
     test_error::<S>(yaml, expected);
 }
 
