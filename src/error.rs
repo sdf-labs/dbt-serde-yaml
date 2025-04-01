@@ -1,5 +1,6 @@
 use crate::libyaml::{emitter, error as libyaml};
 use crate::path::Path;
+use crate::{Marker, Span};
 use serde::{de, ser};
 use std::error::Error as StdError;
 use std::fmt::{self, Debug, Display};
@@ -24,10 +25,10 @@ pub(crate) enum ErrorImpl {
 
     EndOfStream,
     MoreThanOneDocument,
-    RecursionLimitExceeded(libyaml::Mark),
+    RecursionLimitExceeded(Marker),
     RepetitionLimitExceeded,
     BytesUnsupported,
-    UnknownAnchor(libyaml::Mark),
+    UnknownAnchor(Marker),
     SerializeNestedEnum,
     ScalarInMerge,
     TaggedInMerge,
@@ -43,44 +44,8 @@ pub(crate) enum ErrorImpl {
 
 #[derive(Debug)]
 pub(crate) struct Pos {
-    mark: libyaml::Mark,
+    span: Span,
     path: String,
-}
-
-/// The input location that an error occured.
-#[derive(Debug)]
-pub struct Location {
-    index: usize,
-    line: usize,
-    column: usize,
-}
-
-impl Location {
-    /// The byte index of the error
-    pub fn index(&self) -> usize {
-        self.index
-    }
-
-    /// The line of the error
-    pub fn line(&self) -> usize {
-        self.line
-    }
-
-    /// The column of the error
-    pub fn column(&self) -> usize {
-        self.column
-    }
-
-    // This is to keep decoupled with the yaml crate
-    #[doc(hidden)]
-    fn from_mark(mark: libyaml::Mark) -> Self {
-        Location {
-            index: mark.index() as usize,
-            // `line` and `column` returned from libyaml are 0-indexed but all error messages add +1 to this value
-            line: mark.line() as usize + 1,
-            column: mark.column() as usize + 1,
-        }
-    }
 }
 
 impl Error {
@@ -101,8 +66,15 @@ impl Error {
     /// assert_eq!(location.line(), 1);
     /// assert_eq!(location.column(), 1);
     /// ```
-    pub fn location(&self) -> Option<Location> {
+    pub fn location(&self) -> Option<Marker> {
         self.0.location()
+    }
+
+    /// Returns the Span from the error if one exists.    
+    ///
+    /// Not all types of errors have a span so this can return `None`.
+    pub fn span(&self) -> Option<Span> {
+        self.0.span()
     }
 
     /// Unwraps the error and returns the underlying error if it is an external
@@ -127,9 +99,23 @@ pub(crate) fn shared(shared: Arc<ErrorImpl>) -> Error {
 pub(crate) fn fix_mark(mut error: Error, mark: libyaml::Mark, path: Path) -> Error {
     if let ErrorImpl::Message(_, none @ None) = error.0.as_mut() {
         *none = Some(Pos {
-            mark,
+            span: Span::from(Marker::from(mark)),
             path: path.to_string(),
         });
+    }
+    error
+}
+
+pub(crate) fn set_span(mut error: Error, span: Span) -> Error {
+    if let ErrorImpl::Message(_, pos) = error.0.as_mut() {
+        if let Some(pos) = pos {
+            pos.span = span;
+        } else {
+            *pos = Some(Pos {
+                span,
+                path: ".".to_string(),
+            })
+        }
     }
     error
 }
@@ -198,8 +184,8 @@ impl de::Error for Error {
 }
 
 impl ErrorImpl {
-    fn location(&self) -> Option<Location> {
-        self.mark().map(Location::from_mark)
+    fn location(&self) -> Option<Marker> {
+        self.span().map(|span| span.start)
     }
 
     fn source(&self) -> Option<&(dyn StdError + 'static)> {
@@ -212,13 +198,14 @@ impl ErrorImpl {
         }
     }
 
-    fn mark(&self) -> Option<libyaml::Mark> {
+    fn span(&self) -> Option<Span> {
         match self {
-            ErrorImpl::Message(_, Some(Pos { mark, path: _ }))
-            | ErrorImpl::RecursionLimitExceeded(mark)
-            | ErrorImpl::UnknownAnchor(mark) => Some(*mark),
-            ErrorImpl::Libyaml(err) => Some(err.mark()),
-            ErrorImpl::Shared(err) => err.mark(),
+            ErrorImpl::Message(_, Some(Pos { span, path: _ })) => Some(span.clone()),
+            ErrorImpl::RecursionLimitExceeded(mark) | ErrorImpl::UnknownAnchor(mark) => {
+                Some(Span::from(*mark))
+            }
+            ErrorImpl::Libyaml(err) => Some(Marker::from(err.mark()).into()),
+            ErrorImpl::Shared(err) => err.span(),
             _ => None,
         }
     }
@@ -226,7 +213,7 @@ impl ErrorImpl {
     fn message_no_mark(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             ErrorImpl::Message(msg, None) => f.write_str(msg),
-            ErrorImpl::Message(msg, Some(Pos { mark: _, path })) => {
+            ErrorImpl::Message(msg, Some(Pos { span: _, path })) => {
                 if path != "." {
                     write!(f, "{}: ", path)?;
                 }
@@ -271,7 +258,7 @@ impl ErrorImpl {
             ErrorImpl::Shared(err) => err.display(f),
             _ => {
                 self.message_no_mark(f)?;
-                if let Some(mark) = self.mark() {
+                if let Some(mark) = self.location() {
                     if mark.line() != 0 || mark.column() != 0 {
                         write!(f, " at {}", mark)?;
                     }
@@ -295,13 +282,8 @@ impl ErrorImpl {
                 }
                 let msg = MessageNoMark(self).to_string();
                 Debug::fmt(&msg, f)?;
-                if let Some(mark) = self.mark() {
-                    write!(
-                        f,
-                        ", line: {}, column: {}",
-                        mark.line() + 1,
-                        mark.column() + 1,
-                    )?;
+                if let Some(mark) = self.location() {
+                    write!(f, ", line: {}, column: {}", mark.line(), mark.column(),)?;
                 }
                 f.write_str(")")
             }

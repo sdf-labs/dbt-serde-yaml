@@ -1,3 +1,4 @@
+use crate::error;
 use crate::mapping::{DuplicateKey, MappingVisitor};
 use crate::value::tagged::{self, TagStringVisitor};
 use crate::value::TaggedValue;
@@ -1411,9 +1412,9 @@ impl<'de> Deserializer<'de> for &'de Value {
                 value: None,
             },
             other => {
-                return Err(Error::invalid_type(
-                    other.unexpected(),
-                    &"a Value::Tagged enum",
+                return Err(error::set_span(
+                    Error::invalid_type(other.unexpected(), &"a Value::Tagged enum"),
+                    self.span(),
                 ));
             }
         })
@@ -1654,11 +1655,8 @@ impl<'de> Deserializer<'de> for MapRefDeserializer<'de> {
 
 impl Value {
     #[cold]
-    fn invalid_type<E>(&self, exp: &dyn Expected) -> E
-    where
-        E: de::Error,
-    {
-        de::Error::invalid_type(self.unexpected(), exp)
+    fn invalid_type(&self, exp: &dyn Expected) -> Error {
+        error::set_span(de::Error::invalid_type(self.unexpected(), exp), self.span())
     }
 
     #[cold]
