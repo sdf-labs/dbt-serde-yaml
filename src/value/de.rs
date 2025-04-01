@@ -1,7 +1,7 @@
 use crate::mapping::{DuplicateKey, MappingVisitor};
 use crate::value::tagged::{self, TagStringVisitor};
 use crate::value::TaggedValue;
-use crate::{number, spanned, Error, Mapping, Sequence, Value};
+use crate::{number, spanned, Error, Mapping, Sequence, Span, Value};
 use serde::de::value::{BorrowedStrDeserializer, StrDeserializer};
 use serde::de::{
     self, Deserialize, DeserializeSeed, Deserializer, EnumAccess, Error as _, Expected, MapAccess,
@@ -189,8 +189,12 @@ where
     {
         let start = spanned::get_marker();
         let val = deserializer.deserialize_any(self)?;
-        let end = spanned::get_marker();
-        Ok(val.with_span(start..end))
+        let span = Span::from(start..spanned::get_marker());
+
+        #[cfg(feature = "filename")]
+        let span = span.maybe_capture_filename();
+
+        Ok(val.with_span(span))
     }
 }
 
@@ -225,8 +229,12 @@ where
 {
     let start = spanned::get_marker();
     let val = deserializer.deserialize_any(ValueVisitor(&mut duplicate_key_callback))?;
-    let end = spanned::get_marker();
-    Ok(val.with_span(start..end))
+    let span = Span::from(start..spanned::get_marker());
+
+    #[cfg(feature = "filename")]
+    let span = span.maybe_capture_filename();
+
+    Ok(val.with_span(span))
 }
 
 impl<'de> Deserialize<'de> for Value {
@@ -236,8 +244,12 @@ impl<'de> Deserialize<'de> for Value {
     {
         let start = spanned::get_marker();
         let val = deserializer.deserialize_any(ValueVisitor(&mut |_| DuplicateKey::Error))?;
-        let end = spanned::get_marker();
-        Ok(val.with_span(start..end))
+        let span = Span::from(start..spanned::get_marker());
+
+        #[cfg(feature = "filename")]
+        let span = span.maybe_capture_filename();
+
+        Ok(val.with_span(span))
     }
 }
 

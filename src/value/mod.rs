@@ -716,7 +716,7 @@ impl Value {
             | Value::Sequence(_, span)
             | Value::Mapping(_, span)
             | Value::Tagged(_, span)
-            | Value::String(_, span) => *span,
+            | Value::String(_, span) => span.clone(),
         }
     }
 
@@ -743,10 +743,18 @@ impl Value {
 
     fn broadcast_start_mark(&self) {
         spanned::set_marker(self.span().start);
+        #[cfg(feature = "filename")]
+        if let Some(filename) = self.span().filename {
+            spanned::set_filename(filename);
+        }
     }
 
     fn broadcast_end_mark(&self) {
         spanned::set_marker(self.span().end);
+        #[cfg(feature = "filename")]
+        if let Some(filename) = self.span().filename {
+            spanned::set_filename(filename);
+        }
     }
 }
 

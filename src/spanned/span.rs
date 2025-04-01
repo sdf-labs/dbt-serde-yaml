@@ -1,22 +1,35 @@
 use std::fmt::{self, Debug, Display};
 use std::ops::Range;
+#[cfg(feature = "filename")]
+use std::path::PathBuf;
+#[cfg(feature = "filename")]
+use std::sync::Arc;
 
 use crate::libyaml::error::Mark;
 
 /// A source span.
-#[derive(Clone, Copy, PartialEq, PartialOrd)]
+#[derive(Clone, PartialEq, PartialOrd)]
 pub struct Span {
     /// The start of the span.
     pub start: Marker,
 
     /// The end of the span.
     pub end: Marker,
+
+    #[cfg(feature = "filename")]
+    /// An optional filename.
+    pub filename: Option<Arc<PathBuf>>,
 }
 
 impl Span {
     /// Create a new span.
     pub fn new(start: Marker, end: Marker) -> Self {
-        Span { start, end }
+        Span {
+            start,
+            end,
+            #[cfg(feature = "filename")]
+            filename: None,
+        }
     }
 
     /// True if this span is valid.
@@ -33,6 +46,48 @@ impl Span {
         Span {
             start: Marker::zero(),
             end: Marker::zero(),
+            #[cfg(feature = "filename")]
+            filename: None,
+        }
+    }
+}
+
+#[cfg(feature = "filename")]
+impl Span {
+    /// Create a new span with the specified filename.
+    pub fn new_with_filename(
+        start: Marker,
+        end: Marker,
+        filename: impl Into<Arc<PathBuf>>,
+    ) -> Self {
+        Span {
+            start,
+            end,
+            filename: Some(filename.into()),
+        }
+    }
+
+    /// Replace the filename in this span with the given filename.
+    pub fn with_filename(self, filename: impl Into<Arc<PathBuf>>) -> Self {
+        Span {
+            filename: Some(filename.into()),
+            ..self
+        }
+    }
+
+    /// Get the filename in this span.
+    pub fn get_filename(&self) -> Option<&std::path::Path> {
+        self.filename.as_deref().map(|f| f.as_ref())
+    }
+
+    pub(crate) fn maybe_capture_filename(self) -> Self {
+        if let Some(filename) = crate::spanned::get_filename() {
+            Self {
+                filename: Some(filename),
+                ..self
+            }
+        } else {
+            self
         }
     }
 }
@@ -57,7 +112,7 @@ impl Display for Span {
 
 impl From<(Marker, Marker)> for Span {
     fn from((start, end): (Marker, Marker)) -> Self {
-        Span { start, end }
+        Span::new(start, end)
     }
 }
 
@@ -65,13 +120,7 @@ impl From<Range<Option<Marker>>> for Span {
     fn from(range: Range<Option<Marker>>) -> Self {
         let start = range.start.unwrap_or_default();
         let end = range.end.unwrap_or_default();
-        Span { start, end }
-    }
-}
-
-impl From<Span> for Range<Option<usize>> {
-    fn from(span: Span) -> Self {
-        Some(span.start.index)..Some(span.end.index)
+        Span::new(start, end)
     }
 }
 

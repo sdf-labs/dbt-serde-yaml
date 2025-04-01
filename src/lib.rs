@@ -165,6 +165,11 @@ pub use crate::error::{Error, Location, Result};
 pub use crate::ser::{to_string, to_writer, Serializer};
 #[doc(inline)]
 pub use crate::spanned::{reset_marker, set_marker, Marker, Span, Spanned};
+
+#[cfg(feature = "filename")]
+#[doc(inline)]
+pub use crate::spanned::with_filename;
+
 #[doc(inline)]
 pub use crate::value::{from_value, to_value, Index, Number, Sequence, Value};
 
