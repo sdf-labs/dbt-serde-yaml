@@ -207,3 +207,31 @@ fn test_custom_deserialize_with() {
         y: Spanned<f64>,
     }
 }
+
+#[cfg(feature = "filename")]
+#[test]
+fn test_with_filename() {
+    use std::path::PathBuf;
+
+    use serde::de::IntoDeserializer as _;
+
+    let yaml = indoc! {"
+        x: 1.0
+        y: 2.0
+    "};
+
+    let value = {
+        let _f = dbt_serde_yaml::with_filename("filename.yml");
+        let value: dbt_serde_yaml::Value = dbt_serde_yaml::from_str(yaml).unwrap();
+        assert_eq!(
+            dbg!(value.span()).filename.as_deref(),
+            Some(PathBuf::from("filename.yml")).as_ref()
+        );
+        dbt_serde_yaml::Value::deserialize(value.into_deserializer()).unwrap()
+    };
+
+    assert_eq!(
+        value.span().filename.as_deref(),
+        Some(PathBuf::from("filename.yml")).as_ref()
+    );
+}

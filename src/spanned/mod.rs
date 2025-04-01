@@ -90,13 +90,11 @@ where
 {
     fn clone(&self) -> Self {
         Spanned {
-            span: self.span,
+            span: self.span.clone(),
             node: self.node.clone(),
         }
     }
 }
-
-impl<T> Copy for Spanned<T> where T: Copy {}
 
 impl<T> Debug for Spanned<T>
 where
@@ -168,17 +166,39 @@ where
     where
         D: Deserializer<'de>,
     {
-        let start_marker = MARKER.with(|marker| marker.borrow().unwrap_or_default());
+        let start_marker = get_marker();
         let node = T::deserialize(deserializer)?;
-        let end_marker = MARKER.with(|marker| marker.borrow().unwrap_or_default());
-        Ok(Spanned {
-            span: Span {
-                start: start_marker,
-                end: end_marker,
-            },
-            node,
-        })
+        let end_marker = get_marker();
+        let span: Span = (start_marker..end_marker).into();
+
+        #[cfg(feature = "filename")]
+        let span = span.maybe_capture_filename();
+
+        Ok(Spanned { span, node })
     }
+}
+
+#[cfg(feature = "filename")]
+/// A scope guard that sets the current source filename.
+pub struct WithFilenameScope {
+    original: Option<std::sync::Arc<std::path::PathBuf>>,
+}
+
+#[cfg(feature = "filename")]
+impl Drop for WithFilenameScope {
+    fn drop(&mut self) {
+        FILENAME.with(|f| *f.borrow_mut() = std::mem::take(&mut self.original));
+    }
+}
+
+#[cfg(feature = "filename")]
+/// Set the current source filename. Returns a scope guard that restores the
+/// original filename when dropped.
+pub fn with_filename(filename: impl Into<std::path::PathBuf>) -> WithFilenameScope {
+    let filename = filename.into();
+    let original = FILENAME.with(|f| f.borrow_mut().take());
+    FILENAME.with(|f| *f.borrow_mut() = Some(std::sync::Arc::new(filename)));
+    WithFilenameScope { original }
 }
 
 /// Set the current source location marker.
@@ -199,8 +219,25 @@ pub(crate) fn get_marker() -> Option<Marker> {
     MARKER.with(|m| *m.borrow())
 }
 
+#[cfg(feature = "filename")]
+/// Set the current source filename.
+pub(crate) fn set_filename(filename: std::sync::Arc<std::path::PathBuf>) {
+    FILENAME.with(|f| *f.borrow_mut() = Some(filename));
+}
+
+#[cfg(feature = "filename")]
+/// Get the current source filename.
+pub(crate) fn get_filename() -> Option<std::sync::Arc<std::path::PathBuf>> {
+    FILENAME.with(|f| f.borrow().clone())
+}
+
 thread_local! {
     static MARKER: std::cell::RefCell<Option<Marker>> = const {
+        std::cell::RefCell::new(None)
+    };
+
+    #[cfg(feature = "filename")]
+    static FILENAME: std::cell::RefCell<Option<std::sync::Arc<std::path::PathBuf>>> = const {
         std::cell::RefCell::new(None)
     };
 }
