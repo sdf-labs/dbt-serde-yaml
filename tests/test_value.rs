@@ -195,7 +195,8 @@ fn test_into_typed() {
     assert_eq!(test3.third, Some(Value::string("xyz".to_string())));
     assert_eq!(test3.fourth, Some("xyz name".to_string()));
     assert_eq!(test3.seconds.len(), 2);
-    let test2_1: Test2 = dbg!(test3.seconds[0].clone())
+    let test2_1: Test2 = test3.seconds[0]
+        .clone()
         .into_typed(
             |key: Value| {
                 unused_keys.push(key);

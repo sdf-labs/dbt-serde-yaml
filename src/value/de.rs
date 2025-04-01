@@ -243,6 +243,7 @@ impl<'de> Deserialize<'de> for Value {
         D: Deserializer<'de>,
     {
         let start = spanned::get_marker();
+        let _g = crate::verbatim::with_should_not_transform_any();
         let val = deserializer.deserialize_any(ValueVisitor(&mut |_| DuplicateKey::Error))?;
         let span = Span::from(start..spanned::get_marker());
 
@@ -363,11 +364,13 @@ where
     U: FnMut(Value),
     F: FnMut(Value) -> Result<Value, Box<dyn std::error::Error + 'static + Send + Sync>>,
 {
-    fn apply_transformation(
+    fn maybe_apply_transformation(
         &mut self,
     ) -> Result<(), Box<dyn std::error::Error + 'static + Send + Sync>> {
         if let Some(transformer) = &mut self.field_transformer {
-            self.value = transformer(std::mem::take(&mut self.value))?;
+            if crate::verbatim::should_transform_any() {
+                self.value = transformer(std::mem::take(&mut self.value))?;
+            }
         }
         Ok(())
     }
@@ -380,13 +383,13 @@ where
 {
     type Error = Error;
 
-    fn deserialize_any<V>(self, visitor: V) -> Result<V::Value, Error>
+    fn deserialize_any<V>(mut self, visitor: V) -> Result<V::Value, Error>
     where
         V: Visitor<'de>,
     {
-        let value = self.value;
-        value.broadcast_end_mark();
-        match value {
+        self.maybe_apply_transformation()?;
+        self.value.broadcast_end_mark();
+        match self.value {
             Value::Null(..) => visitor.visit_unit(),
             Value::Bool(v, ..) => visitor.visit_bool(v),
             Value::Number(n, ..) => n.deserialize_any(visitor),
@@ -409,7 +412,7 @@ where
     where
         V: Visitor<'de>,
     {
-        self.apply_transformation()?;
+        self.maybe_apply_transformation()?;
         self.value.broadcast_end_mark();
         match self.value.untag() {
             Value::Bool(v, ..) => visitor.visit_bool(v),
@@ -421,7 +424,7 @@ where
     where
         V: Visitor<'de>,
     {
-        self.apply_transformation()?;
+        self.maybe_apply_transformation()?;
         self.value.deserialize_number(visitor)
     }
 
@@ -429,7 +432,7 @@ where
     where
         V: Visitor<'de>,
     {
-        self.apply_transformation()?;
+        self.maybe_apply_transformation()?;
         self.value.deserialize_number(visitor)
     }
 
@@ -437,7 +440,7 @@ where
     where
         V: Visitor<'de>,
     {
-        self.apply_transformation()?;
+        self.maybe_apply_transformation()?;
         self.value.deserialize_number(visitor)
     }
 
@@ -445,7 +448,7 @@ where
     where
         V: Visitor<'de>,
     {
-        self.apply_transformation()?;
+        self.maybe_apply_transformation()?;
         self.value.deserialize_number(visitor)
     }
 
@@ -453,7 +456,7 @@ where
     where
         V: Visitor<'de>,
     {
-        self.apply_transformation()?;
+        self.maybe_apply_transformation()?;
         self.value.deserialize_number(visitor)
     }
 
@@ -461,7 +464,7 @@ where
     where
         V: Visitor<'de>,
     {
-        self.apply_transformation()?;
+        self.maybe_apply_transformation()?;
         self.value.deserialize_number(visitor)
     }
 
@@ -469,7 +472,7 @@ where
     where
         V: Visitor<'de>,
     {
-        self.apply_transformation()?;
+        self.maybe_apply_transformation()?;
         self.value.deserialize_number(visitor)
     }
 
@@ -477,7 +480,7 @@ where
     where
         V: Visitor<'de>,
     {
-        self.apply_transformation()?;
+        self.maybe_apply_transformation()?;
         self.value.deserialize_number(visitor)
     }
 
@@ -485,7 +488,7 @@ where
     where
         V: Visitor<'de>,
     {
-        self.apply_transformation()?;
+        self.maybe_apply_transformation()?;
         self.value.deserialize_number(visitor)
     }
 
@@ -493,7 +496,7 @@ where
     where
         V: Visitor<'de>,
     {
-        self.apply_transformation()?;
+        self.maybe_apply_transformation()?;
         self.value.deserialize_number(visitor)
     }
 
@@ -501,7 +504,7 @@ where
     where
         V: Visitor<'de>,
     {
-        self.apply_transformation()?;
+        self.maybe_apply_transformation()?;
         self.value.deserialize_number(visitor)
     }
 
@@ -509,7 +512,7 @@ where
     where
         V: Visitor<'de>,
     {
-        self.apply_transformation()?;
+        self.maybe_apply_transformation()?;
         self.value.deserialize_number(visitor)
     }
 
@@ -531,7 +534,7 @@ where
     where
         V: Visitor<'de>,
     {
-        self.apply_transformation()?;
+        self.maybe_apply_transformation()?;
         self.value.broadcast_end_mark();
         match self.value.untag() {
             Value::String(v, ..) => visitor.visit_string(v),
@@ -550,7 +553,7 @@ where
     where
         V: Visitor<'de>,
     {
-        self.apply_transformation()?;
+        self.maybe_apply_transformation()?;
         self.value.broadcast_end_mark();
         match self.value.untag() {
             Value::String(v, ..) => visitor.visit_string(v),
@@ -576,7 +579,7 @@ where
     where
         V: Visitor<'de>,
     {
-        self.apply_transformation()?;
+        self.maybe_apply_transformation()?;
         self.value.broadcast_end_mark();
         match self.value {
             Value::Null(..) => visitor.visit_unit(),
@@ -607,7 +610,7 @@ where
     where
         V: Visitor<'de>,
     {
-        self.apply_transformation()?;
+        self.maybe_apply_transformation()?;
         self.value.broadcast_end_mark();
         match self.value.untag() {
             Value::Sequence(v, ..) => {
@@ -646,7 +649,7 @@ where
     where
         V: Visitor<'de>,
     {
-        self.apply_transformation()?;
+        self.maybe_apply_transformation()?;
         self.value.broadcast_end_mark();
         match self.value.untag() {
             Value::Mapping(v, ..) => visit_mapping(
@@ -676,7 +679,7 @@ where
     where
         V: Visitor<'de>,
     {
-        self.apply_transformation()?;
+        self.maybe_apply_transformation()?;
         self.value.broadcast_end_mark();
         match self.value.untag() {
             Value::Mapping(v, ..) => visit_mapping(
@@ -706,7 +709,7 @@ where
     where
         V: Visitor<'de>,
     {
-        self.apply_transformation()?;
+        self.maybe_apply_transformation()?;
         self.value.broadcast_end_mark();
 
         let tag;
