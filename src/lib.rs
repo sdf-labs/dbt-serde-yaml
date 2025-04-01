@@ -172,6 +172,8 @@ pub use crate::spanned::with_filename;
 
 #[doc(inline)]
 pub use crate::value::{from_value, to_value, Index, Number, Sequence, Value};
+#[doc(inline)]
+pub use crate::verbatim::Verbatim;
 
 #[doc(inline)]
 pub use crate::mapping::Mapping;
@@ -186,6 +188,7 @@ mod path;
 mod ser;
 pub mod spanned;
 pub mod value;
+mod verbatim;
 pub mod with;
 
 // Prevent downstream code from implementing the Index trait.

@@ -4,7 +4,7 @@
     clippy::uninlined_format_args
 )]
 
-use dbt_serde_yaml::{Number, Value};
+use dbt_serde_yaml::{Number, Value, Verbatim};
 use indoc::indoc;
 use serde::de::IntoDeserializer;
 use serde::Deserialize;
@@ -444,4 +444,44 @@ fn test_value_span_multidoc() {
         yaml[tuple_span.start.index..tuple_span.end.index].trim(),
         "!wat\n  - 0\n  - 0"
     );
+}
+
+#[test]
+fn test_verbatim() {
+    let yaml = indoc! {"
+        x: 1
+        y: 2
+    "};
+
+    #[derive(Deserialize, PartialEq, Eq, Debug, Hash)]
+    struct Thing {
+        x: i32,
+        y: Verbatim<i32>,
+    }
+
+    let value = dbt_serde_yaml::from_str::<Value>(yaml).unwrap();
+    let thing: Thing = value
+        .into_typed(
+            |key: Value| {
+                panic!("unexpected key {:?}", key);
+            },
+            |v| {
+                if let Some(v) = v.as_i64() {
+                    Ok(Value::from(v + 100))
+                } else {
+                    Ok(v)
+                }
+            },
+        )
+        .unwrap();
+
+    assert_eq!(thing.x, 101);
+    assert_eq!(*thing.y, 2);
+
+    let thing2: Thing = dbt_serde_yaml::from_str(indoc! {"
+        x: 101
+        y: 2
+    "})
+    .unwrap();
+    assert_eq!(thing, thing2);
 }
