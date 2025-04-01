@@ -9,7 +9,7 @@ use std::{
     ops::{Deref, DerefMut},
 };
 
-use serde::{de::IntoDeserializer, Deserialize, Deserializer, Serialize, Serializer};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 /// A wrapper type that protects the inner value from being transformed by the
 /// `field_transformer` when deserialized by the `Value::into_typed` method.
@@ -122,9 +122,30 @@ where
     where
         D: Deserializer<'de>,
     {
-        let value = crate::Value::deserialize(deserializer)?;
-        T::deserialize(value.into_deserializer())
-            .map(Verbatim)
-            .map_err(serde::de::Error::custom)
+        let _g = with_should_not_transform_any();
+        T::deserialize(deserializer).map(Verbatim)
     }
+}
+
+pub(crate) fn should_transform_any() -> bool {
+    SHOULD_TRANSFORM_ANY.with(|flag| flag.get())
+}
+
+pub(crate) struct ShouldTransformAnyGuard;
+
+impl Drop for ShouldTransformAnyGuard {
+    fn drop(&mut self) {
+        SHOULD_TRANSFORM_ANY.with(|flag| flag.set(true));
+    }
+}
+
+pub(crate) fn with_should_not_transform_any() -> ShouldTransformAnyGuard {
+    SHOULD_TRANSFORM_ANY.with(|flag| flag.set(false));
+    ShouldTransformAnyGuard
+}
+
+thread_local! {
+    static SHOULD_TRANSFORM_ANY: std::cell::Cell<bool>  = const {
+        std::cell::Cell::new(true)
+    };
 }
