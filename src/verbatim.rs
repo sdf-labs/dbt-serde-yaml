@@ -131,17 +131,18 @@ pub(crate) fn should_transform_any() -> bool {
     SHOULD_TRANSFORM_ANY.with(|flag| flag.get())
 }
 
-pub(crate) struct ShouldTransformAnyGuard;
+struct ShouldTransformAnyGuard(bool);
 
 impl Drop for ShouldTransformAnyGuard {
     fn drop(&mut self) {
-        SHOULD_TRANSFORM_ANY.with(|flag| flag.set(true));
+        SHOULD_TRANSFORM_ANY.with(|flag| flag.set(self.0));
     }
 }
 
-pub(crate) fn with_should_not_transform_any() -> ShouldTransformAnyGuard {
+fn with_should_not_transform_any() -> ShouldTransformAnyGuard {
+    let current = SHOULD_TRANSFORM_ANY.with(|flag| flag.get());
     SHOULD_TRANSFORM_ANY.with(|flag| flag.set(false));
-    ShouldTransformAnyGuard
+    ShouldTransformAnyGuard(current)
 }
 
 thread_local! {

@@ -4,6 +4,8 @@
     clippy::uninlined_format_args
 )]
 
+use std::collections::HashMap;
+
 use dbt_serde_yaml::{Number, Value, Verbatim};
 use indoc::indoc;
 use serde::de::IntoDeserializer;
@@ -63,10 +65,9 @@ fn test_into_typed() {
     let mut unused_keys = vec![];
 
     fn transformer(v: Value) -> Result<Value, Box<dyn std::error::Error + Send + Sync>> {
-        if v.is_string() {
-            Ok((v.as_str().unwrap().to_string() + " name").into())
-        } else {
-            Ok(v)
+        match v {
+            Value::String(s, span) => Ok(Value::String(format!("{} name", s), span)),
+            _ => Ok(v),
         }
     }
 
@@ -101,7 +102,7 @@ fn test_into_typed() {
     }
     #[derive(Debug, Deserialize, PartialEq)]
     struct Test2 {
-        first: Value,
+        first: Verbatim<Value>,
         third: u32,
     }
 
@@ -143,8 +144,8 @@ fn test_into_typed() {
     assert_eq!(
         test2,
         Test2 {
-            // field_transform is not applied to `Value`-typed fields:
-            first: Value::string("abc".to_string()),
+            // field_transform is not applied to `Verbatim`-typed fields:
+            first: Value::string("abc".to_string()).into(),
             third: 100
         }
     );
@@ -153,9 +154,11 @@ fn test_into_typed() {
     #[derive(Debug, Deserialize, PartialEq)]
     struct Test3 {
         first: Test,
-        seconds: Vec<Value>,
+        seconds: Vec<Verbatim<Value>>,
         third: Option<Value>,
-        fourth: Option<String>,
+        fourth: Option<Option<String>>,
+        #[serde(flatten)]
+        rest: Option<HashMap<String, Value>>,
     }
 
     let value = dbt_serde_yaml::from_str::<Value>(indoc! {"
@@ -171,6 +174,8 @@ fn test_into_typed() {
               third: 2
         fourth: xyz
         third: xyz
+        fifth:
+          sixth: cde
         "});
     let test3: Test3 = value
         .unwrap()
@@ -192,10 +197,24 @@ fn test_into_typed() {
             second: 99
         }
     );
-    assert_eq!(test3.third, Some(Value::string("xyz".to_string())));
-    assert_eq!(test3.fourth, Some("xyz name".to_string()));
+    assert_eq!(test3.third, Some(Value::string("xyz name".to_string())));
+    assert_eq!(test3.fourth, Some(Some("xyz name".to_string())));
+    assert_eq!(
+        test3.rest,
+        Some(HashMap::from([(
+            "fifth".to_string(),
+            Value::mapping(
+                [(
+                    Value::string("sixth".to_string()),
+                    Value::string("cde name".to_string()),
+                )]
+                .into_iter()
+                .collect()
+            )
+        )]))
+    );
     assert_eq!(test3.seconds.len(), 2);
-    let test2_1: Test2 = test3.seconds[0]
+    let test2_1: Test2 = (*test3.seconds[0])
         .clone()
         .into_typed(
             |key: Value| {
@@ -214,7 +233,7 @@ fn test_into_typed() {
     assert_eq!(
         test2_1,
         Test2 {
-            first: Value::string("A".to_string()),
+            first: Value::string("A".to_string()).into(),
             third: 3
         }
     );
@@ -452,12 +471,15 @@ fn test_verbatim() {
     let yaml = indoc! {"
         x: 1
         y: 2
+        z: 3
     "};
 
     #[derive(Deserialize, PartialEq, Eq, Debug, Hash)]
     struct Thing {
         x: i32,
         y: Verbatim<i32>,
+        z: Verbatim<Option<i32>>,
+        v: Verbatim<Option<String>>,
     }
 
     let value = dbt_serde_yaml::from_str::<Value>(yaml).unwrap();
@@ -478,11 +500,41 @@ fn test_verbatim() {
 
     assert_eq!(thing.x, 101);
     assert_eq!(*thing.y, 2);
+    assert_eq!(*thing.z, Some(3));
+    assert!(thing.v.is_none());
 
     let thing2: Thing = dbt_serde_yaml::from_str(indoc! {"
         x: 101
         y: 2
+        z: 3
     "})
     .unwrap();
     assert_eq!(thing, thing2);
+
+    #[derive(Deserialize, PartialEq, Eq, Debug, Hash)]
+    struct Thing2 {
+        x: Option<i32>,
+        y: Verbatim<i32>,
+        z: Verbatim<Option<Value>>,
+        w: Verbatim<Option<String>>,
+    }
+
+    let value = dbt_serde_yaml::from_str::<Value>(yaml).unwrap();
+    let thing2: Thing2 = value
+        .into_typed(
+            |key: Value| {
+                panic!("unexpected key {:?}", key);
+            },
+            |v| {
+                if v.is_i64() {
+                    Ok(Value::null())
+                } else {
+                    Ok(v)
+                }
+            },
+        )
+        .unwrap();
+    assert_eq!(thing2.x, None);
+    assert_eq!(*thing2.y, 2);
+    assert_eq!(*thing2.z, Some(3.into()));
 }

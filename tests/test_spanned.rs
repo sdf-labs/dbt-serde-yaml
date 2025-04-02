@@ -224,7 +224,7 @@ fn test_with_filename() {
         let _f = dbt_serde_yaml::with_filename("filename.yml");
         let value: dbt_serde_yaml::Value = dbt_serde_yaml::from_str(yaml).unwrap();
         assert_eq!(
-            dbg!(value.span()).filename.as_deref(),
+            value.span().filename.as_deref(),
             Some(PathBuf::from("filename.yml")).as_ref()
         );
         dbt_serde_yaml::Value::deserialize(value.into_deserializer()).unwrap()
