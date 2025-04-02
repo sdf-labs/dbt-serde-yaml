@@ -86,6 +86,17 @@ impl Error {
             None
         }
     }
+
+    /// Returns the error message without the location information.
+    pub fn display_no_mark(&self) -> impl Display + use<'_> {
+        struct MessageNoMark<'a>(&'a ErrorImpl);
+        impl Display for MessageNoMark<'_> {
+            fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+                self.0.message_no_mark(f)
+            }
+        }
+        MessageNoMark(&self.0)
+    }
 }
 
 pub(crate) fn new(inner: ErrorImpl) -> Error {
@@ -98,8 +109,13 @@ pub(crate) fn shared(shared: Arc<ErrorImpl>) -> Error {
 
 pub(crate) fn fix_mark(mut error: Error, mark: libyaml::Mark, path: Path) -> Error {
     if let ErrorImpl::Message(_, none @ None) = error.0.as_mut() {
+        let span = Span::from(Marker::from(mark));
+
+        #[cfg(feature = "filename")]
+        let span = span.maybe_capture_filename();
+
         *none = Some(Pos {
-            span: Span::from(Marker::from(mark)),
+            span,
             path: path.to_string(),
         });
     }

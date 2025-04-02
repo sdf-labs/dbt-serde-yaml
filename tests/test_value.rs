@@ -510,16 +510,24 @@ fn test_verbatim() {
     "})
     .unwrap();
     assert_eq!(thing, thing2);
+}
 
-    #[derive(Deserialize, PartialEq, Eq, Debug, Hash)]
+#[test]
+fn test_verbatim_flatten() {
+    #[derive(Deserialize, PartialEq, Eq, Debug)]
     struct Thing2 {
         x: Option<i32>,
         y: Verbatim<i32>,
-        z: Verbatim<Option<Value>>,
-        w: Verbatim<Option<String>>,
+        #[serde(flatten)]
+        rest: Verbatim<HashMap<String, Option<i32>>>,
     }
 
-    let value = dbt_serde_yaml::from_str::<Value>(yaml).unwrap();
+    let value = dbt_serde_yaml::from_str::<Value>(indoc! {"
+        x: 1
+        y: 2
+        z: 3
+    "})
+    .unwrap();
     let thing2: Thing2 = value
         .into_typed(
             |key: Value| {
@@ -536,5 +544,6 @@ fn test_verbatim() {
         .unwrap();
     assert_eq!(thing2.x, None);
     assert_eq!(*thing2.y, 2);
-    assert_eq!(*thing2.z, Some(3.into()));
+    // Note: unfortunately `Verbatim` does not work in `flatten` fields:
+    assert_eq!(*thing2.rest, HashMap::from([("z".to_string(), None,)]));
 }
