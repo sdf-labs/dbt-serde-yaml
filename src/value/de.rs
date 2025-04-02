@@ -63,11 +63,11 @@ impl Value {
         U: FnMut(Value),
         F: FnMut(Value) -> Result<Value, Box<dyn std::error::Error + 'static + Send + Sync>>,
     {
-        let de = ValueDeserializer {
-            value: self,
-            unused_key_callback: Some(&mut unused_key_callback),
-            field_transformer: Some(&mut field_transformer),
-        };
+        let de = ValueDeserializer::new_with(
+            self,
+            Some(&mut unused_key_callback),
+            Some(&mut field_transformer),
+        );
 
         T::deserialize(de)
     }
@@ -244,7 +244,6 @@ impl<'de> Deserialize<'de> for Value {
         D: Deserializer<'de>,
     {
         let start = spanned::get_marker();
-        let _g = crate::verbatim::with_should_not_transform_any();
         let val = deserializer.deserialize_any(ValueVisitor(&mut |_| DuplicateKey::Error))?;
         let span = Span::from(start..spanned::get_marker());
 
@@ -348,14 +347,31 @@ pub struct ValueDeserializer<'a, U, F> {
     value: Value,
     unused_key_callback: Option<&'a mut U>,
     field_transformer: Option<&'a mut F>,
+    // Flag indicating whether the value has been already been transformed by
+    // field_transformer:
+    is_transformed: bool,
 }
 
-impl<U, F> ValueDeserializer<'_, U, F> {
+impl<'a, U, F> ValueDeserializer<'a, U, F> {
     pub(crate) fn new(value: Value) -> Self {
         ValueDeserializer {
             value,
             unused_key_callback: None,
             field_transformer: None,
+            is_transformed: false,
+        }
+    }
+
+    fn new_with(
+        value: Value,
+        unused_key_callback: Option<&'a mut U>,
+        field_transformer: Option<&'a mut F>,
+    ) -> Self {
+        ValueDeserializer {
+            value,
+            unused_key_callback,
+            field_transformer,
+            is_transformed: false,
         }
     }
 }
@@ -369,7 +385,7 @@ where
         &mut self,
     ) -> Result<(), Box<dyn std::error::Error + 'static + Send + Sync>> {
         if let Some(transformer) = &mut self.field_transformer {
-            if crate::verbatim::should_transform_any() {
+            if !self.is_transformed && crate::verbatim::should_transform_any() {
                 self.value = transformer(std::mem::take(&mut self.value))?;
             }
         }
@@ -565,14 +581,20 @@ where
         }
     }
 
-    fn deserialize_option<V>(self, visitor: V) -> Result<V::Value, Error>
+    fn deserialize_option<V>(mut self, visitor: V) -> Result<V::Value, Error>
     where
         V: Visitor<'de>,
     {
+        self.maybe_apply_transformation()?;
         self.value.broadcast_end_mark();
         match self.value {
             Value::Null(..) => visitor.visit_none(),
-            _ => visitor.visit_some(self),
+            _ => visitor.visit_some(ValueDeserializer::<U, F> {
+                value: self.value,
+                unused_key_callback: self.unused_key_callback,
+                field_transformer: self.field_transformer,
+                is_transformed: true,
+            }),
         }
     }
 
@@ -814,11 +836,11 @@ where
         T: DeserializeSeed<'de>,
     {
         match self.value {
-            Some(value) => seed.deserialize(ValueDeserializer {
+            Some(value) => seed.deserialize(ValueDeserializer::new_with(
                 value,
-                unused_key_callback: self.unused_key_callback,
-                field_transformer: self.field_transformer,
-            }),
+                self.unused_key_callback,
+                self.field_transformer,
+            )),
             None => Err(Error::invalid_type(
                 Unexpected::UnitVariant,
                 &"newtype variant",
@@ -1008,11 +1030,11 @@ where
     {
         match self.iter.next() {
             Some(value) => {
-                let deserializer = ValueDeserializer {
+                let deserializer = ValueDeserializer::new_with(
                     value,
-                    unused_key_callback: self.unused_key_callback.as_deref_mut(),
-                    field_transformer: self.field_transformer.as_deref_mut(),
-                };
+                    self.unused_key_callback.as_deref_mut(),
+                    self.field_transformer.as_deref_mut(),
+                );
                 seed.deserialize(deserializer).map(Some)
             }
             None => Ok(None),
@@ -1097,11 +1119,11 @@ where
         T: DeserializeSeed<'de>,
     {
         match self.value.take() {
-            Some(value) => seed.deserialize(ValueDeserializer {
+            Some(value) => seed.deserialize(ValueDeserializer::new_with(
                 value,
-                unused_key_callback: self.unused_key_callback.as_deref_mut(),
-                field_transformer: self.field_transformer.as_deref_mut(),
-            }),
+                self.unused_key_callback.as_deref_mut(),
+                self.field_transformer.as_deref_mut(),
+            )),
             None => panic!("visit_value called before visit_key"),
         }
     }
