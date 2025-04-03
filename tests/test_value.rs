@@ -560,7 +560,7 @@ fn test_verbatim_flatten() {
 }
 
 #[test]
-fn test_rest() {
+fn test_flatten() {
     #[derive(Deserialize, Serialize, PartialEq, Eq, Debug)]
     struct Thing3 {
         x: Option<i32>,
@@ -602,10 +602,24 @@ fn test_rest() {
         "})
         .unwrap()
     );
+
+    let value = dbt_serde_yaml::from_str::<Value>(indoc! {"
+        y: 2
+    "})
+    .unwrap();
+    let thing3 = Thing3::deserialize(value.into_deserializer()).unwrap();
+    assert_eq!(
+        thing3,
+        Thing3 {
+            x: None,
+            y: 2.into(),
+            __flatten__: HashMap::new()
+        }
+    );
 }
 
 #[test]
-fn test_verbatim_rest_nested() {
+fn test_verbatim_flatten_nested() {
     #[derive(Deserialize, PartialEq, Eq, Debug)]
     struct Thing4 {
         x: Option<i32>,
