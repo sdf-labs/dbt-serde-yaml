@@ -826,5 +826,3 @@ impl IntoDeserializer<'_, Error> for Value {
         de::ValueDeserializer::new(self)
     }
 }
-
-pub(crate) const FLATTEN_KEY: &str = "__flatten__";
