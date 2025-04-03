@@ -514,7 +514,7 @@ fn test_verbatim() {
 
 #[test]
 fn test_verbatim_flatten() {
-    #[derive(Deserialize, PartialEq, Eq, Debug)]
+    #[derive(Deserialize, Serialize, PartialEq, Eq, Debug)]
     struct Thing2 {
         x: Option<i32>,
         y: Verbatim<i32>,
@@ -546,4 +546,106 @@ fn test_verbatim_flatten() {
     assert_eq!(*thing2.y, 2);
     // Note: unfortunately `Verbatim` does not work in `flatten` fields:
     assert_eq!(*thing2.rest, HashMap::from([("z".to_string(), None,)]));
+
+    let value = dbt_serde_yaml::to_value(thing2).unwrap();
+    assert_eq!(
+        value,
+        dbt_serde_yaml::from_str::<Value>(indoc! {"
+            x: null
+            y: 2
+            z: null
+        "})
+        .unwrap()
+    );
+}
+
+#[test]
+fn test_rest() {
+    #[derive(Deserialize, Serialize, PartialEq, Eq, Debug)]
+    struct Thing3 {
+        x: Option<i32>,
+        y: Verbatim<i32>,
+        __flatten__: HashMap<String, Verbatim<Option<i32>>>,
+    }
+
+    let value = dbt_serde_yaml::from_str::<Value>(indoc! {"
+        x: 1
+        y: 2
+        z: 3
+    "})
+    .unwrap();
+    let thing3: Thing3 = value
+        .into_typed(
+            |key: Value| {
+                panic!("unexpected key {:?}", key);
+            },
+            |v| {
+                if v.is_i64() {
+                    Ok(Value::null())
+                } else {
+                    Ok(v)
+                }
+            },
+        )
+        .unwrap();
+    assert_eq!(thing3.x, None);
+    assert_eq!(*thing3.y, 2);
+    assert_eq!(*(thing3.__flatten__["z"]), Some(3));
+
+    let value = dbt_serde_yaml::to_value(thing3).unwrap();
+    assert_eq!(
+        value,
+        dbt_serde_yaml::from_str::<Value>(indoc! {"
+            x: null
+            y: 2
+            z: 3
+        "})
+        .unwrap()
+    );
+}
+
+#[test]
+fn test_verbatim_rest_nested() {
+    #[derive(Deserialize, PartialEq, Eq, Debug)]
+    struct Thing4 {
+        x: Option<i32>,
+        __flatten__: Verbatim<HashMap<String, Thing5>>,
+    }
+
+    #[derive(Deserialize, PartialEq, Eq, Debug)]
+    struct Thing5 {
+        a: Option<i32>,
+        __flatten__: HashMap<String, Option<i32>>,
+    }
+
+    let value = dbt_serde_yaml::from_str::<Value>(indoc! {"
+        x: 1
+        z:
+          a: 3
+          b: 4
+    "})
+    .unwrap();
+    let thing4: Thing4 = value
+        .into_typed(
+            |key: Value| {
+                panic!("unexpected key {:?}", key);
+            },
+            |v| {
+                if v.is_i64() {
+                    Ok(Value::null())
+                } else {
+                    Ok(v)
+                }
+            },
+        )
+        .unwrap();
+    assert_eq!(thing4.x, None);
+    assert_eq!(thing4.__flatten__.len(), 1);
+    assert_eq!(
+        thing4.__flatten__["z"],
+        Thing5 {
+            a: Some(3),
+            __flatten__: HashMap::from([("b".to_string(), Some(4))]),
+        }
+    );
 }

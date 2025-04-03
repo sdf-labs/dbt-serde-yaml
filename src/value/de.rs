@@ -307,7 +307,29 @@ where
 fn visit_mapping<'de, 'a, V, U, F>(
     mapping: Mapping,
     visitor: V,
-    known_keys: Option<&'static [&'static str]>,
+    unused_key_callback: Option<&'a mut U>,
+    field_transformer: Option<&'a mut F>,
+) -> Result<V::Value, Error>
+where
+    V: Visitor<'de>,
+    U: FnMut(Value),
+    F: FnMut(Value) -> Result<Value, Box<dyn std::error::Error + 'static + Send + Sync>>,
+{
+    let len = mapping.len();
+    let mut deserializer = MapDeserializer::new(mapping, unused_key_callback, field_transformer);
+    let map = visitor.visit_map(&mut deserializer)?;
+    let remaining = deserializer.iter.len();
+    if remaining == 0 {
+        Ok(map)
+    } else {
+        Err(Error::invalid_length(len, &"fewer elements in map"))
+    }
+}
+
+fn visit_struct<'de, 'a, V, U, F>(
+    mapping: Mapping,
+    visitor: V,
+    known_keys: &'static [&'static str],
     unused_key_callback: Option<&'a mut U>,
     field_transformer: Option<&'a mut F>,
 ) -> Result<V::Value, Error>
@@ -318,7 +340,7 @@ where
 {
     let len = mapping.len();
     let mut deserializer =
-        MapDeserializer::new(mapping, known_keys, unused_key_callback, field_transformer);
+        StructDeserializer::new(mapping, known_keys, unused_key_callback, field_transformer);
     let map = visitor.visit_map(&mut deserializer)?;
     let remaining = deserializer.iter.len();
     if remaining == 0 {
@@ -414,13 +436,9 @@ where
             Value::Sequence(v, ..) => {
                 visit_sequence(v, visitor, self.unused_key_callback, self.field_transformer)
             }
-            Value::Mapping(v, ..) => visit_mapping(
-                v,
-                visitor,
-                None,
-                self.unused_key_callback,
-                self.field_transformer,
-            ),
+            Value::Mapping(v, ..) => {
+                visit_mapping(v, visitor, self.unused_key_callback, self.field_transformer)
+            }
             Value::Tagged(tagged, ..) => visitor.visit_enum(*tagged),
         }
     }
@@ -675,17 +693,12 @@ where
         self.maybe_apply_transformation()?;
         self.value.broadcast_end_mark();
         match self.value.untag() {
-            Value::Mapping(v, ..) => visit_mapping(
-                v,
-                visitor,
-                None,
-                self.unused_key_callback,
-                self.field_transformer,
-            ),
+            Value::Mapping(v, ..) => {
+                visit_mapping(v, visitor, self.unused_key_callback, self.field_transformer)
+            }
             Value::Null(..) => visit_mapping(
                 Mapping::new(),
                 visitor,
-                None,
                 self.unused_key_callback,
                 self.field_transformer,
             ),
@@ -705,17 +718,17 @@ where
         self.maybe_apply_transformation()?;
         self.value.broadcast_end_mark();
         match self.value.untag() {
-            Value::Mapping(v, ..) => visit_mapping(
+            Value::Mapping(v, ..) => visit_struct(
                 v,
                 visitor,
-                Some(fields),
+                fields,
                 self.unused_key_callback,
                 self.field_transformer,
             ),
-            Value::Null(..) => visit_mapping(
+            Value::Null(..) => visit_struct(
                 Mapping::new(),
                 visitor,
-                Some(fields),
+                fields,
                 self.unused_key_callback,
                 self.field_transformer,
             ),
@@ -874,9 +887,9 @@ where
     {
         match self.value {
             Some(Value::Mapping(v, ..)) => Deserializer::deserialize_any(
-                MapDeserializer::new(
+                StructDeserializer::new(
                     v,
-                    Some(fields),
+                    fields,
                     self.unused_key_callback,
                     self.field_transformer,
                 ),
@@ -935,9 +948,9 @@ where
     {
         if let Value::Mapping(v, ..) = self.value {
             Deserializer::deserialize_any(
-                MapDeserializer::new(
+                StructDeserializer::new(
                     v,
-                    Some(fields),
+                    fields,
                     self.unused_key_callback,
                     self.field_transformer,
                 ),
@@ -1052,7 +1065,6 @@ where
 pub(crate) struct MapDeserializer<'a, U, F> {
     iter: <Mapping as IntoIterator>::IntoIter,
     value: Option<Value>,
-    known_keys: Option<HashSet<&'static str>>,
     unused_key_callback: Option<&'a mut U>,
     field_transformer: Option<&'a mut F>,
 }
@@ -1064,14 +1076,12 @@ where
 {
     pub(crate) fn new(
         map: Mapping,
-        known_keys: Option<&'static [&'static str]>,
         unused_key_callback: Option<&'a mut U>,
         field_transformer: Option<&'a mut F>,
     ) -> Self {
         MapDeserializer {
             iter: map.into_iter(),
             value: None,
-            known_keys: known_keys.map(|keys| keys.iter().copied().collect()),
             unused_key_callback,
             field_transformer,
         }
@@ -1091,21 +1101,6 @@ where
     {
         match self.iter.next() {
             Some((key, value)) => {
-                let is_unused = if let Some(known_keys) = &self.known_keys {
-                    match key.as_str() {
-                        Some(key) if known_keys.contains(key) => false,
-                        _ => true,
-                    }
-                } else {
-                    false
-                };
-
-                if is_unused {
-                    if let Some(callback) = &mut self.unused_key_callback {
-                        callback(key.clone());
-                    }
-                }
-
                 self.value = Some(value);
                 seed.deserialize(ValueDeserializer::<U, F>::new(key))
                     .map(Some)
@@ -1137,6 +1132,143 @@ where
 }
 
 impl<'de, U, F> Deserializer<'de> for MapDeserializer<'_, U, F>
+where
+    U: FnMut(Value),
+    F: FnMut(Value) -> Result<Value, Box<dyn std::error::Error + 'static + Send + Sync>>,
+{
+    type Error = Error;
+
+    #[inline]
+    fn deserialize_any<V>(self, visitor: V) -> Result<V::Value, Error>
+    where
+        V: Visitor<'de>,
+    {
+        visitor.visit_map(self)
+    }
+
+    fn deserialize_ignored_any<V>(self, visitor: V) -> Result<V::Value, Error>
+    where
+        V: Visitor<'de>,
+    {
+        drop(self);
+        visitor.visit_unit()
+    }
+
+    forward_to_deserialize_any! {
+        bool i8 i16 i32 i64 u8 u16 u32 u64 f32 f64 char str string bytes
+        byte_buf option unit unit_struct newtype_struct seq tuple tuple_struct
+        map struct enum identifier
+    }
+}
+
+pub(crate) struct StructDeserializer<'a, U, F> {
+    iter: <Mapping as IntoIterator>::IntoIter,
+    value: Option<Value>,
+    known_keys: HashSet<&'static str>,
+    unused_key_callback: Option<&'a mut U>,
+    field_transformer: Option<&'a mut F>,
+    rest: Vec<(Value, Value)>,
+    has_flatten: bool,
+}
+
+impl<'a, U, F> StructDeserializer<'a, U, F>
+where
+    U: FnMut(Value),
+    F: FnMut(Value) -> Result<Value, Box<dyn std::error::Error + 'static + Send + Sync>>,
+{
+    pub(crate) fn new(
+        map: Mapping,
+        known_keys: &'static [&'static str],
+        unused_key_callback: Option<&'a mut U>,
+        field_transformer: Option<&'a mut F>,
+    ) -> Self {
+        let known_keys = known_keys.iter().copied().collect::<HashSet<_>>();
+        let has_flatten = known_keys.contains(super::FLATTEN_KEY);
+        StructDeserializer {
+            iter: map.into_iter(),
+            value: None,
+            known_keys,
+            unused_key_callback,
+            field_transformer,
+            rest: Vec::new(),
+            has_flatten,
+        }
+    }
+}
+
+impl<'de, U, F> MapAccess<'de> for StructDeserializer<'_, U, F>
+where
+    U: FnMut(Value),
+    F: FnMut(Value) -> Result<Value, Box<dyn std::error::Error + 'static + Send + Sync>>,
+{
+    type Error = Error;
+
+    fn next_key_seed<T>(&mut self, seed: T) -> Result<Option<T::Value>, Error>
+    where
+        T: DeserializeSeed<'de>,
+    {
+        loop {
+            match self.iter.next() {
+                Some((key, value)) => {
+                    match key.as_str() {
+                        Some(super::FLATTEN_KEY) if self.has_flatten => {
+                            self.rest.push((key, value));
+                            continue;
+                        }
+                        Some(key_str) if !self.known_keys.contains(key_str) => {
+                            if self.has_flatten {
+                                self.rest.push((key, value));
+                                continue;
+                            } else if let Some(callback) = &mut self.unused_key_callback {
+                                callback(key.clone());
+                            }
+                        }
+                        _ => {}
+                    };
+
+                    self.value = Some(value);
+                    break seed
+                        .deserialize(ValueDeserializer::<U, F>::new(key))
+                        .map(Some);
+                }
+                None if !self.rest.is_empty() => {
+                    break seed
+                        .deserialize(ValueDeserializer::<U, F>::new(super::FLATTEN_KEY.into()))
+                        .map(Some);
+                }
+                None => break Ok(None),
+            }
+        }
+    }
+
+    fn next_value_seed<T>(&mut self, seed: T) -> Result<T::Value, Error>
+    where
+        T: DeserializeSeed<'de>,
+    {
+        match self.value.take() {
+            Some(value) => seed.deserialize(ValueDeserializer::new_with(
+                value,
+                self.unused_key_callback.as_deref_mut(),
+                self.field_transformer.as_deref_mut(),
+            )),
+            None if !self.rest.is_empty() => seed.deserialize(MapDeserializer::new(
+                self.rest.drain(..).collect(),
+                self.unused_key_callback.as_deref_mut(),
+                self.field_transformer.as_deref_mut(),
+            )),
+            None => panic!("visit_value called before visit_key"),
+        }
+    }
+
+    fn size_hint(&self) -> Option<usize> {
+        match self.iter.size_hint() {
+            (lower, Some(upper)) if lower == upper => Some(upper),
+            _ => None,
+        }
+    }
+}
+
+impl<'de, U, F> Deserializer<'de> for StructDeserializer<'_, U, F>
 where
     U: FnMut(Value),
     F: FnMut(Value) -> Result<Value, Box<dyn std::error::Error + 'static + Send + Sync>>,
