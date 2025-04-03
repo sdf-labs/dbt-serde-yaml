@@ -806,6 +806,18 @@ impl ser::SerializeStruct for SerializeStruct {
     where
         V: ?Sized + ser::Serialize,
     {
+        if key == super::FLATTEN_KEY {
+            let flattened = value.serialize(Serializer)?;
+            if let Value::Mapping(flattened, ..) = flattened {
+                for (k, v) in flattened {
+                    self.mapping.insert(k, v);
+                }
+                return Ok(());
+            } else {
+                return Err(error::new(ErrorImpl::FlattenNotMapping));
+            }
+        }
+
         self.mapping.insert(to_value(key)?, to_value(value)?);
         Ok(())
     }
@@ -828,6 +840,18 @@ impl ser::SerializeStructVariant for SerializeStructVariant {
     where
         V: ?Sized + ser::Serialize,
     {
+        if field == super::FLATTEN_KEY {
+            let flattened = v.serialize(Serializer)?;
+            if let Value::Mapping(flattened, ..) = flattened {
+                for (k, v) in flattened {
+                    self.mapping.insert(k, v);
+                }
+                return Ok(());
+            } else {
+                return Err(error::new(ErrorImpl::FlattenNotMapping));
+            }
+        }
+
         self.mapping.insert(to_value(field)?, to_value(v)?);
         Ok(())
     }
