@@ -266,11 +266,7 @@ impl ErrorImpl {
             ErrorImpl::FailedToParseNumber => f.write_str("failed to parse YAML number"),
             ErrorImpl::External(err) => Display::fmt(err.as_ref(), f),
             ErrorImpl::Shared(_) => unreachable!(),
-            ErrorImpl::FlattenNotMapping => write!(
-                f,
-                "expected the {} field to be a mapping",
-                crate::value::FLATTEN_KEY
-            ),
+            ErrorImpl::FlattenNotMapping => write!(f, "expected the flatten field to be a mapping"),
         }
     }
 

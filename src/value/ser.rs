@@ -806,7 +806,7 @@ impl ser::SerializeStruct for SerializeStruct {
     where
         V: ?Sized + ser::Serialize,
     {
-        if key == super::FLATTEN_KEY {
+        if crate::is_flatten_key(key.as_bytes()) {
             let flattened = value.serialize(Serializer)?;
             if let Value::Mapping(flattened, ..) = flattened {
                 for (k, v) in flattened {
@@ -840,7 +840,7 @@ impl ser::SerializeStructVariant for SerializeStructVariant {
     where
         V: ?Sized + ser::Serialize,
     {
-        if field == super::FLATTEN_KEY {
+        if crate::is_flatten_key(field.as_bytes()) {
             let flattened = v.serialize(Serializer)?;
             if let Value::Mapping(flattened, ..) = flattened {
                 for (k, v) in flattened {

@@ -200,3 +200,11 @@ mod private {
     impl Sealed for crate::Value {}
     impl<T> Sealed for &T where T: ?Sized + Sealed {}
 }
+
+pub(crate) fn is_flatten_key(key: &[u8]) -> bool {
+    key.len() > 4
+        && key[0] == b'_'
+        && key[1] == b'_'
+        && key[key.len() - 2] == b'_'
+        && key[key.len() - 1] == b'_'
+}

@@ -342,11 +342,11 @@ where
     let mut deserializer =
         StructDeserializer::new(mapping, known_keys, unused_key_callback, field_transformer);
     let map = visitor.visit_map(&mut deserializer)?;
-    let remaining = deserializer.iter.len();
+    let remaining = deserializer.iter.len() + deserializer.rest.len();
     if remaining == 0 {
         Ok(map)
     } else {
-        Err(Error::invalid_length(len, &"fewer elements in map"))
+        Err(Error::invalid_length(len, &"fewer elements in struct"))
     }
 }
 
@@ -1164,11 +1164,12 @@ where
 pub(crate) struct StructDeserializer<'a, U, F> {
     iter: <Mapping as IntoIterator>::IntoIter,
     value: Option<Value>,
-    known_keys: HashSet<&'static str>,
+    normal_keys: HashSet<&'static str>,
+    flatten_keys: Vec<&'static str>,
     unused_key_callback: Option<&'a mut U>,
     field_transformer: Option<&'a mut F>,
     rest: Vec<(Value, Value)>,
-    has_flatten: bool,
+    flatten_keys_done: usize,
 }
 
 impl<'a, U, F> StructDeserializer<'a, U, F>
@@ -1182,17 +1183,29 @@ where
         unused_key_callback: Option<&'a mut U>,
         field_transformer: Option<&'a mut F>,
     ) -> Self {
-        let known_keys = known_keys.iter().copied().collect::<HashSet<_>>();
-        let has_flatten = known_keys.contains(super::FLATTEN_KEY);
+        let (normal_keys, flatten_keys): (Vec<_>, Vec<_>) = known_keys
+            .iter()
+            .rev()
+            .copied()
+            .partition(|key| !crate::is_flatten_key(key.as_bytes()));
         StructDeserializer {
             iter: map.into_iter(),
             value: None,
-            known_keys,
+            normal_keys: normal_keys.into_iter().collect(),
+            flatten_keys,
             unused_key_callback,
             field_transformer,
             rest: Vec::new(),
-            has_flatten,
+            flatten_keys_done: 0,
         }
+    }
+
+    pub(crate) fn has_flatten(&self) -> bool {
+        !self.flatten_keys.is_empty()
+    }
+
+    fn has_unprocessed_flatten_keys(&self) -> bool {
+        self.flatten_keys_done < self.flatten_keys.len()
     }
 }
 
@@ -1211,12 +1224,12 @@ where
             match self.iter.next() {
                 Some((key, value)) => {
                     match key.as_str() {
-                        Some(super::FLATTEN_KEY) if self.has_flatten => {
+                        Some(key_str) if crate::is_flatten_key(key_str.as_bytes()) => {
                             self.rest.push((key, value));
                             continue;
                         }
-                        Some(key_str) if !self.known_keys.contains(key_str) => {
-                            if self.has_flatten {
+                        Some(key_str) if !self.normal_keys.contains(key_str) => {
+                            if self.has_flatten() {
                                 self.rest.push((key, value));
                                 continue;
                             } else if let Some(callback) = &mut self.unused_key_callback {
@@ -1231,9 +1244,10 @@ where
                         .deserialize(ValueDeserializer::<U, F>::new(key))
                         .map(Some);
                 }
-                None if !self.rest.is_empty() => {
+                None if self.has_unprocessed_flatten_keys() => {
+                    let key = self.flatten_keys[self.flatten_keys_done];
                     break seed
-                        .deserialize(ValueDeserializer::<U, F>::new(super::FLATTEN_KEY.into()))
+                        .deserialize(ValueDeserializer::<U, F>::new(key.into()))
                         .map(Some);
                 }
                 None => break Ok(None),
@@ -1251,11 +1265,16 @@ where
                 self.unused_key_callback.as_deref_mut(),
                 self.field_transformer.as_deref_mut(),
             )),
-            None if !self.rest.is_empty() => seed.deserialize(MapDeserializer::new(
-                self.rest.drain(..).collect(),
-                self.unused_key_callback.as_deref_mut(),
-                self.field_transformer.as_deref_mut(),
-            )),
+            None if self.has_unprocessed_flatten_keys() => {
+                self.flatten_keys_done += 1;
+                let deserializer = MapDeserializer::new(
+                    self.rest.drain(..).collect(),
+                    self.unused_key_callback.as_deref_mut(),
+                    self.field_transformer.as_deref_mut(),
+                );
+                let res = seed.deserialize(deserializer)?;
+                Ok(res)
+            }
             None => panic!("visit_value called before visit_key"),
         }
     }

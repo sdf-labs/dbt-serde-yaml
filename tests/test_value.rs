@@ -623,13 +623,13 @@ fn test_verbatim_flatten_nested() {
     #[derive(Deserialize, PartialEq, Eq, Debug)]
     struct Thing4 {
         x: Option<i32>,
-        __flatten__: Verbatim<HashMap<String, Thing5>>,
+        __thing5__: Verbatim<HashMap<String, Thing5>>,
     }
 
     #[derive(Deserialize, PartialEq, Eq, Debug)]
     struct Thing5 {
         a: Option<i32>,
-        __flatten__: HashMap<String, Option<i32>>,
+        __rest__: HashMap<String, Option<i32>>,
     }
 
     let value = dbt_serde_yaml::from_str::<Value>(indoc! {"
@@ -654,12 +654,12 @@ fn test_verbatim_flatten_nested() {
         )
         .unwrap();
     assert_eq!(thing4.x, None);
-    assert_eq!(thing4.__flatten__.len(), 1);
+    assert_eq!(thing4.__thing5__.len(), 1);
     assert_eq!(
-        thing4.__flatten__["z"],
+        thing4.__thing5__["z"],
         Thing5 {
             a: Some(3),
-            __flatten__: HashMap::from([("b".to_string(), Some(4))]),
+            __rest__: HashMap::from([("b".to_string(), Some(4))]),
         }
     );
 }
