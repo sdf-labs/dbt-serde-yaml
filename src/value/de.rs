@@ -259,11 +259,13 @@ impl Value {
     where
         V: Visitor<'de>,
     {
+        let span = self.span();
         self.broadcast_end_mark();
         match self.untag_ref() {
             Value::Number(n, ..) => n.deserialize_any(visitor),
             other => Err(other.invalid_type(&visitor)),
         }
+        .map_err(|e| error::set_span(e, span))
     }
 }
 
@@ -665,6 +667,7 @@ where
         V: Visitor<'de>,
     {
         self.maybe_apply_transformation()?;
+        let span = self.value.span();
         self.value.broadcast_end_mark();
         match self.value {
             Value::Null(..) => visitor.visit_unit(),
@@ -679,6 +682,7 @@ where
             }
             Value::Tagged(tagged, ..) => visitor.visit_enum(*tagged),
         }
+        .map_err(|e| error::set_span(e, span))
     }
 
     fn deserialize_bool<V>(mut self, visitor: V) -> Result<V::Value, Error>
@@ -686,11 +690,13 @@ where
         V: Visitor<'de>,
     {
         self.maybe_apply_transformation()?;
+        let span = self.value.span();
         self.value.broadcast_end_mark();
         match self.value.untag() {
             Value::Bool(v, ..) => visitor.visit_bool(v),
             other => Err(other.invalid_type(&visitor)),
         }
+        .map_err(|e| error::set_span(e, span))
     }
 
     fn deserialize_i8<V>(mut self, visitor: V) -> Result<V::Value, Error>
@@ -808,11 +814,13 @@ where
         V: Visitor<'de>,
     {
         self.maybe_apply_transformation()?;
+        let span = self.value.span();
         self.value.broadcast_end_mark();
         match self.value.untag() {
             Value::String(v, ..) => visitor.visit_string(v),
             other => Err(other.invalid_type(&visitor)),
         }
+        .map_err(|e| error::set_span(e, span))
     }
 
     fn deserialize_bytes<V>(self, visitor: V) -> Result<V::Value, Error>
@@ -827,6 +835,7 @@ where
         V: Visitor<'de>,
     {
         self.maybe_apply_transformation()?;
+        let span = self.value.span();
         self.value.broadcast_end_mark();
         match self.value.untag() {
             Value::String(v, ..) => visitor.visit_string(v),
@@ -835,6 +844,7 @@ where
             }
             other => Err(other.invalid_type(&visitor)),
         }
+        .map_err(|e| error::set_span(e, span))
     }
 
     fn deserialize_option<V>(mut self, visitor: V) -> Result<V::Value, Error>
@@ -842,6 +852,7 @@ where
         V: Visitor<'de>,
     {
         self.maybe_apply_transformation()?;
+        let span = self.value.span();
         self.value.broadcast_end_mark();
         match self.value {
             Value::Null(..) => visitor.visit_none(),
@@ -852,6 +863,7 @@ where
                 is_transformed: true,
             }),
         }
+        .map_err(|e| error::set_span(e, span))
     }
 
     fn deserialize_unit<V>(mut self, visitor: V) -> Result<V::Value, Error>
@@ -859,11 +871,13 @@ where
         V: Visitor<'de>,
     {
         self.maybe_apply_transformation()?;
+        let span = self.value.span();
         self.value.broadcast_end_mark();
         match self.value {
             Value::Null(..) => visitor.visit_unit(),
             _ => Err(self.value.invalid_type(&visitor)),
         }
+        .map_err(|e| error::set_span(e, span))
     }
 
     fn deserialize_unit_struct<V>(self, _name: &'static str, visitor: V) -> Result<V::Value, Error>
@@ -881,8 +895,11 @@ where
     where
         V: Visitor<'de>,
     {
+        let span = self.value.span();
         self.value.broadcast_end_mark();
-        visitor.visit_newtype_struct(self)
+        visitor
+            .visit_newtype_struct(self)
+            .map_err(|e| error::set_span(e, span))
     }
 
     fn deserialize_seq<V>(mut self, visitor: V) -> Result<V::Value, Error>
@@ -890,6 +907,7 @@ where
         V: Visitor<'de>,
     {
         self.maybe_apply_transformation()?;
+        let span = self.value.span();
         self.value.broadcast_end_mark();
         match self.value.untag() {
             Value::Sequence(v, ..) => {
@@ -903,6 +921,7 @@ where
             ),
             other => Err(other.invalid_type(&visitor)),
         }
+        .map_err(|e| error::set_span(e, span))
     }
 
     fn deserialize_tuple<V>(self, _len: usize, visitor: V) -> Result<V::Value, Error>
@@ -929,6 +948,7 @@ where
         V: Visitor<'de>,
     {
         self.maybe_apply_transformation()?;
+        let span = self.value.span();
         self.value.broadcast_end_mark();
         match self.value.untag() {
             Value::Mapping(v, ..) => {
@@ -942,6 +962,7 @@ where
             ),
             other => Err(other.invalid_type(&visitor)),
         }
+        .map_err(|e| error::set_span(e, span))
     }
 
     fn deserialize_struct<V>(
@@ -954,6 +975,7 @@ where
         V: Visitor<'de>,
     {
         self.maybe_apply_transformation()?;
+        let span = self.value.span();
         self.value.broadcast_end_mark();
         match self.value.untag() {
             Value::Mapping(v, ..) => visit_struct(
@@ -972,6 +994,7 @@ where
             ),
             other => Err(other.invalid_type(&visitor)),
         }
+        .map_err(|e| error::set_span(e, span))
     }
 
     fn deserialize_enum<V>(
@@ -984,35 +1007,38 @@ where
         V: Visitor<'de>,
     {
         self.maybe_apply_transformation()?;
+        let span = self.value.span();
         self.value.broadcast_end_mark();
 
         let tag;
-        visitor.visit_enum(match self.value {
-            Value::Tagged(tagged, ..) => EnumDeserializer {
-                tag: {
-                    tag = tagged.tag.string;
-                    tagged::nobang(&tag)
+        visitor
+            .visit_enum(match self.value {
+                Value::Tagged(tagged, ..) => EnumDeserializer {
+                    tag: {
+                        tag = tagged.tag.string;
+                        tagged::nobang(&tag)
+                    },
+                    value: Some(tagged.value),
+                    unused_key_callback: self.unused_key_callback,
+                    field_transformer: self.field_transformer,
                 },
-                value: Some(tagged.value),
-                unused_key_callback: self.unused_key_callback,
-                field_transformer: self.field_transformer,
-            },
-            Value::String(variant, ..) => EnumDeserializer {
-                tag: {
-                    tag = variant;
-                    &tag
+                Value::String(variant, ..) => EnumDeserializer {
+                    tag: {
+                        tag = variant;
+                        &tag
+                    },
+                    value: None,
+                    unused_key_callback: self.unused_key_callback,
+                    field_transformer: self.field_transformer,
                 },
-                value: None,
-                unused_key_callback: self.unused_key_callback,
-                field_transformer: self.field_transformer,
-            },
-            other => {
-                return Err(Error::invalid_type(
-                    other.unexpected(),
-                    &"a Value::Tagged enum",
-                ));
-            }
-        })
+                other => {
+                    return Err(Error::invalid_type(
+                        other.unexpected(),
+                        &"a Value::Tagged enum",
+                    ));
+                }
+            })
+            .map_err(|e| error::set_span(e, span))
     }
 
     fn deserialize_identifier<V>(self, visitor: V) -> Result<V::Value, Error>
@@ -1027,8 +1053,9 @@ where
         V: Visitor<'de>,
     {
         self.value.broadcast_end_mark();
+        let span = self.value.span();
         drop(self);
-        visitor.visit_unit()
+        visitor.visit_unit().map_err(|e| error::set_span(e, span))
     }
 }
 
