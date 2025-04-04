@@ -251,26 +251,22 @@ fn test_schemars() {
 
     let schema = schema_for!(Point);
     let yaml = dbt_serde_yaml::to_string(&schema).unwrap();
+    println!("{}", yaml);
     assert_eq!(
         yaml,
         indoc! {"
-            $schema: http://json-schema.org/draft-07/schema#
-            title: Point
-            type: object
-            required:
-            - x
-            - y
-            properties:
-              x:
-                $ref: '#/definitions/double'
-              y:
-                $ref: '#/definitions/String'
-            definitions:
-              String:
-                type: string
-              double:
-                type: number
-                format: double
-        "}
+$schema: http://json-schema.org/draft-07/schema#
+title: Point
+type: object
+required:
+- x
+- y
+properties:
+  x:
+    type: number
+    format: double
+  y:
+    type: string
+"}
     );
 }

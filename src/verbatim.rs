@@ -13,6 +13,7 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 /// A wrapper type that protects the inner value from being transformed by the
 /// `field_transformer` when deserialized by the `Value::into_typed` method.
+#[repr(transparent)]
 pub struct Verbatim<T>(pub T);
 
 impl<T> Deref for Verbatim<T> {
@@ -136,8 +137,16 @@ where
         T::schema_name()
     }
 
-    fn json_schema(generator: &mut schemars::r#gen::SchemaGenerator) -> schemars::schema::Schema {
+    fn json_schema(generator: &mut schemars::gen::SchemaGenerator) -> schemars::schema::Schema {
         T::json_schema(generator)
+    }
+
+    fn is_referenceable() -> bool {
+        false
+    }
+
+    fn schema_id() -> std::borrow::Cow<'static, str> {
+        T::schema_id()
     }
 }
 

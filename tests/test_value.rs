@@ -706,3 +706,53 @@ fn test_multi_flatten_fields() {
             .to_string();
     assert_eq!(expected_err, "missing field `y` at line 1 column 1");
 }
+
+#[cfg(feature = "schemars")]
+#[test]
+fn test_schemars() {
+    #![allow(dead_code)]
+
+    use schemars::schema_for;
+    use schemars::JsonSchema;
+
+    #[derive(JsonSchema)]
+    struct Thing {
+        x: Option<i32>,
+        y: Verbatim<Value>,
+        z: Verbatim<Option<Value>>,
+        v: Verbatim<Option<String>>,
+    }
+
+    let schema = schema_for!(Thing);
+    let schema_string = dbt_serde_yaml::to_string(&schema).unwrap();
+    println!("{}", schema_string);
+    assert_eq!(
+        schema_string,
+        indoc! {"
+$schema: http://json-schema.org/draft-07/schema#
+title: Thing
+type: object
+required:
+- v
+- y
+- z
+properties:
+  v:
+    type:
+    - string
+    - 'null'
+  x:
+    type:
+    - integer
+    - 'null'
+    format: int32
+  y: true
+  z:
+    anyOf:
+    - $ref: '#/definitions/AnyValue'
+    - type: 'null'
+definitions:
+  AnyValue: true
+"}
+    );
+}

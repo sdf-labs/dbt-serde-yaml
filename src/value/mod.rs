@@ -826,3 +826,14 @@ impl IntoDeserializer<'_, Error> for Value {
         de::ValueDeserializer::new(self)
     }
 }
+
+#[cfg(feature = "schemars")]
+impl schemars::JsonSchema for Value {
+    fn schema_name() -> String {
+        "AnyValue".into()
+    }
+
+    fn json_schema(_: &mut schemars::SchemaGenerator) -> schemars::schema::Schema {
+        true.into()
+    }
+}
