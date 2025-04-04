@@ -127,6 +127,20 @@ where
     }
 }
 
+#[cfg(feature = "schemars")]
+impl<T> schemars::JsonSchema for Verbatim<T>
+where
+    T: schemars::JsonSchema,
+{
+    fn schema_name() -> String {
+        T::schema_name()
+    }
+
+    fn json_schema(generator: &mut schemars::r#gen::SchemaGenerator) -> schemars::schema::Schema {
+        T::json_schema(generator)
+    }
+}
+
 pub(crate) fn should_transform_any() -> bool {
     SHOULD_TRANSFORM_ANY.with(|flag| flag.get())
 }

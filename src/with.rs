@@ -7,7 +7,7 @@
 ///
 /// ```
 /// # use serde_derive::{Deserialize, Serialize};
-/// use serde::{Deserialize, Serialize};
+/// use serde::{Deserialize as _, Serialize as _};
 ///
 /// #[derive(Serialize, Deserialize, PartialEq, Debug)]
 /// enum Enum {
@@ -841,7 +841,7 @@ pub mod singleton_map {
 ///
 /// ```
 /// # use serde_derive::{Deserialize, Serialize};
-/// use serde::{Deserialize, Serialize};
+/// use serde::{Deserialize as _, Serialize as _};
 ///
 /// #[derive(Serialize, Deserialize, PartialEq, Debug)]
 /// enum Enum {
@@ -901,7 +901,7 @@ pub mod singleton_map {
 ///
 /// ```
 /// # use serde_derive::{Deserialize, Serialize};
-/// # use serde::{Deserialize, Serialize};
+/// # use serde::{Deserialize as _, Serialize as _};
 /// #
 /// # #[derive(Serialize, Deserialize, PartialEq, Debug)]
 /// # enum Enum {

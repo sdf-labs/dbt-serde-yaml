@@ -83,7 +83,7 @@ impl PartialOrd for Value {
 ///
 /// ```
 /// # use serde_derive::Deserialize;
-/// use serde::Deserialize;
+/// use serde::Deserialize as _;
 /// use dbt_serde_yaml::Value;
 ///
 /// #[derive(Deserialize)]
