@@ -190,6 +190,14 @@ where
     fn json_schema(gen: &mut schemars::gen::SchemaGenerator) -> schemars::schema::Schema {
         T::json_schema(gen)
     }
+
+    fn is_referenceable() -> bool {
+        false
+    }
+
+    fn schema_id() -> std::borrow::Cow<'static, str> {
+        T::schema_id()
+    }
 }
 
 #[cfg(feature = "filename")]
