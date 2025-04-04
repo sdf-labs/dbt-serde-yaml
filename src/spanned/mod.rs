@@ -178,6 +178,20 @@ where
     }
 }
 
+#[cfg(feature = "schemars")]
+impl<T> schemars::JsonSchema for Spanned<T>
+where
+    T: schemars::JsonSchema,
+{
+    fn schema_name() -> String {
+        T::schema_name()
+    }
+
+    fn json_schema(gen: &mut schemars::gen::SchemaGenerator) -> schemars::schema::Schema {
+        T::json_schema(gen)
+    }
+}
+
 #[cfg(feature = "filename")]
 /// A scope guard that sets the current source filename.
 pub struct WithFilenameScope {

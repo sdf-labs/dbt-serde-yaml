@@ -235,3 +235,42 @@ fn test_with_filename() {
         Some(PathBuf::from("filename.yml")).as_ref()
     );
 }
+
+#[cfg(feature = "schemars")]
+#[test]
+fn test_schemars() {
+    use dbt_serde_yaml::Verbatim;
+    use schemars::schema_for;
+    use schemars::JsonSchema;
+
+    #[derive(Deserialize, Serialize, PartialEq, Debug, JsonSchema)]
+    struct Point {
+        x: Spanned<f64>,
+        y: Verbatim<Spanned<String>>,
+    }
+
+    let schema = schema_for!(Point);
+    let yaml = dbt_serde_yaml::to_string(&schema).unwrap();
+    assert_eq!(
+        yaml,
+        indoc! {"
+            $schema: http://json-schema.org/draft-07/schema#
+            title: Point
+            type: object
+            required:
+            - x
+            - y
+            properties:
+              x:
+                $ref: '#/definitions/double'
+              y:
+                $ref: '#/definitions/String'
+            definitions:
+              String:
+                type: string
+              double:
+                type: number
+                format: double
+        "}
+    );
+}

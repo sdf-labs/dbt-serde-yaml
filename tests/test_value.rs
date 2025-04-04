@@ -9,7 +9,7 @@ use std::collections::HashMap;
 use dbt_serde_yaml::{Number, Value, Verbatim};
 use indoc::indoc;
 use serde::de::IntoDeserializer;
-use serde::Deserialize;
+use serde::Deserialize as _;
 use serde_derive::{Deserialize, Serialize};
 
 #[test]
