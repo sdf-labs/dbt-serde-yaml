@@ -18,7 +18,7 @@ impl Value {
     /// Deserialize a [Value] from a string of YAML text.
     pub fn from_str<F>(s: &str, duplicate_key_callback: F) -> Result<Self, Error>
     where
-        F: FnMut(&Self) -> DuplicateKey,
+        F: FnMut(&Self, &Self) -> DuplicateKey,
     {
         let de = crate::de::Deserializer::from_str(s);
         spanned::set_marker(spanned::Marker::start());
@@ -31,7 +31,7 @@ impl Value {
     pub fn from_reader<R, F>(rdr: R, duplicate_key_callback: F) -> Result<Self, Error>
     where
         R: std::io::Read,
-        F: FnMut(&Self) -> DuplicateKey,
+        F: FnMut(&Self, &Self) -> DuplicateKey,
     {
         let de = crate::de::Deserializer::from_reader(rdr);
         spanned::set_marker(spanned::Marker::start());
@@ -43,7 +43,7 @@ impl Value {
     /// Deserialize a [Value] from a byte slice of YAML text.
     pub fn from_slice<F>(s: &[u8], duplicate_key_callback: F) -> Result<Self, Error>
     where
-        F: FnMut(&Self) -> DuplicateKey,
+        F: FnMut(&Self, &Self) -> DuplicateKey,
     {
         let de = crate::de::Deserializer::from_slice(s);
         spanned::set_marker(spanned::Marker::start());
@@ -73,11 +73,11 @@ impl Value {
     }
 }
 
-pub(crate) struct ValueVisitor<'a, F: FnMut(&Value) -> DuplicateKey>(pub &'a mut F);
+pub(crate) struct ValueVisitor<'a, F: FnMut(&Value, &Value) -> DuplicateKey>(pub &'a mut F);
 
 impl<'de, F> serde::de::Visitor<'de> for ValueVisitor<'_, F>
 where
-    F: FnMut(&Value) -> DuplicateKey,
+    F: FnMut(&Value, &Value) -> DuplicateKey,
 {
     type Value = Value;
 
@@ -180,7 +180,7 @@ where
 
 impl<'de, F> DeserializeSeed<'de> for ValueVisitor<'_, F>
 where
-    F: FnMut(&Value) -> DuplicateKey,
+    F: FnMut(&Value, &Value) -> DuplicateKey,
 {
     type Value = Value;
 
@@ -203,7 +203,7 @@ struct SequenceVisitor<'a, F>(pub &'a mut F);
 
 impl<'de, F> serde::de::Visitor<'de> for SequenceVisitor<'_, F>
 where
-    F: FnMut(&Value) -> DuplicateKey,
+    F: FnMut(&Value, &Value) -> DuplicateKey,
 {
     type Value = Sequence;
 
@@ -226,7 +226,7 @@ where
 fn deserialize<'de, D, F>(deserializer: D, mut duplicate_key_callback: F) -> Result<Value, D::Error>
 where
     D: serde::Deserializer<'de>,
-    F: FnMut(&Value) -> DuplicateKey,
+    F: FnMut(&Value, &Value) -> DuplicateKey,
 {
     let start = spanned::get_marker();
     let val = deserializer.deserialize_any(ValueVisitor(&mut duplicate_key_callback))?;
@@ -244,7 +244,7 @@ impl<'de> Deserialize<'de> for Value {
         D: Deserializer<'de>,
     {
         let start = spanned::get_marker();
-        let val = deserializer.deserialize_any(ValueVisitor(&mut |_| DuplicateKey::Error))?;
+        let val = deserializer.deserialize_any(ValueVisitor(&mut |_, _| DuplicateKey::Error))?;
         let span = Span::from(start..spanned::get_marker());
 
         #[cfg(feature = "filename")]
