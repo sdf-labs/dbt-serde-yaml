@@ -365,6 +365,236 @@ where
     }
 }
 
+impl<'de> Deserializer<'de> for Value {
+    type Error = Error;
+
+    fn deserialize_any<V>(self, visitor: V) -> Result<V::Value, Error>
+    where
+        V: Visitor<'de>,
+    {
+        ValueDeserializer::new(self).deserialize_any(visitor)
+    }
+
+    fn deserialize_bool<V>(self, visitor: V) -> Result<V::Value, Error>
+    where
+        V: Visitor<'de>,
+    {
+        ValueDeserializer::new(self).deserialize_bool(visitor)
+    }
+
+    fn deserialize_i8<V>(self, visitor: V) -> Result<V::Value, Self::Error>
+    where
+        V: Visitor<'de>,
+    {
+        ValueDeserializer::new(self).deserialize_i8(visitor)
+    }
+
+    fn deserialize_i16<V>(self, visitor: V) -> Result<V::Value, Self::Error>
+    where
+        V: Visitor<'de>,
+    {
+        ValueDeserializer::new(self).deserialize_i16(visitor)
+    }
+
+    fn deserialize_i32<V>(self, visitor: V) -> Result<V::Value, Self::Error>
+    where
+        V: Visitor<'de>,
+    {
+        ValueDeserializer::new(self).deserialize_i32(visitor)
+    }
+
+    fn deserialize_i64<V>(self, visitor: V) -> Result<V::Value, Self::Error>
+    where
+        V: Visitor<'de>,
+    {
+        ValueDeserializer::new(self).deserialize_i64(visitor)
+    }
+
+    fn deserialize_u8<V>(self, visitor: V) -> Result<V::Value, Self::Error>
+    where
+        V: Visitor<'de>,
+    {
+        ValueDeserializer::new(self).deserialize_u8(visitor)
+    }
+
+    fn deserialize_u16<V>(self, visitor: V) -> Result<V::Value, Self::Error>
+    where
+        V: Visitor<'de>,
+    {
+        ValueDeserializer::new(self).deserialize_u16(visitor)
+    }
+
+    fn deserialize_u32<V>(self, visitor: V) -> Result<V::Value, Self::Error>
+    where
+        V: Visitor<'de>,
+    {
+        ValueDeserializer::new(self).deserialize_u32(visitor)
+    }
+
+    fn deserialize_u64<V>(self, visitor: V) -> Result<V::Value, Self::Error>
+    where
+        V: Visitor<'de>,
+    {
+        ValueDeserializer::new(self).deserialize_u64(visitor)
+    }
+
+    fn deserialize_f32<V>(self, visitor: V) -> Result<V::Value, Self::Error>
+    where
+        V: Visitor<'de>,
+    {
+        ValueDeserializer::new(self).deserialize_f32(visitor)
+    }
+
+    fn deserialize_f64<V>(self, visitor: V) -> Result<V::Value, Self::Error>
+    where
+        V: Visitor<'de>,
+    {
+        ValueDeserializer::new(self).deserialize_f64(visitor)
+    }
+
+    fn deserialize_char<V>(self, visitor: V) -> Result<V::Value, Self::Error>
+    where
+        V: Visitor<'de>,
+    {
+        ValueDeserializer::new(self).deserialize_char(visitor)
+    }
+
+    fn deserialize_str<V>(self, visitor: V) -> Result<V::Value, Self::Error>
+    where
+        V: Visitor<'de>,
+    {
+        ValueDeserializer::new(self).deserialize_str(visitor)
+    }
+
+    fn deserialize_string<V>(self, visitor: V) -> Result<V::Value, Self::Error>
+    where
+        V: Visitor<'de>,
+    {
+        ValueDeserializer::new(self).deserialize_string(visitor)
+    }
+
+    fn deserialize_bytes<V>(self, visitor: V) -> Result<V::Value, Self::Error>
+    where
+        V: Visitor<'de>,
+    {
+        ValueDeserializer::new(self).deserialize_bytes(visitor)
+    }
+
+    fn deserialize_byte_buf<V>(self, visitor: V) -> Result<V::Value, Self::Error>
+    where
+        V: Visitor<'de>,
+    {
+        ValueDeserializer::new(self).deserialize_byte_buf(visitor)
+    }
+
+    fn deserialize_option<V>(self, visitor: V) -> Result<V::Value, Self::Error>
+    where
+        V: Visitor<'de>,
+    {
+        ValueDeserializer::new(self).deserialize_option(visitor)
+    }
+
+    fn deserialize_unit<V>(self, visitor: V) -> Result<V::Value, Self::Error>
+    where
+        V: Visitor<'de>,
+    {
+        ValueDeserializer::new(self).deserialize_unit(visitor)
+    }
+
+    fn deserialize_unit_struct<V>(
+        self,
+        name: &'static str,
+        visitor: V,
+    ) -> Result<V::Value, Self::Error>
+    where
+        V: Visitor<'de>,
+    {
+        ValueDeserializer::new(self).deserialize_unit_struct(name, visitor)
+    }
+
+    fn deserialize_newtype_struct<V>(
+        self,
+        name: &'static str,
+        visitor: V,
+    ) -> Result<V::Value, Self::Error>
+    where
+        V: Visitor<'de>,
+    {
+        ValueDeserializer::new(self).deserialize_newtype_struct(name, visitor)
+    }
+
+    fn deserialize_seq<V>(self, visitor: V) -> Result<V::Value, Self::Error>
+    where
+        V: Visitor<'de>,
+    {
+        ValueDeserializer::new(self).deserialize_seq(visitor)
+    }
+
+    fn deserialize_tuple<V>(self, len: usize, visitor: V) -> Result<V::Value, Self::Error>
+    where
+        V: Visitor<'de>,
+    {
+        ValueDeserializer::new(self).deserialize_tuple(len, visitor)
+    }
+
+    fn deserialize_tuple_struct<V>(
+        self,
+        name: &'static str,
+        len: usize,
+        visitor: V,
+    ) -> Result<V::Value, Self::Error>
+    where
+        V: Visitor<'de>,
+    {
+        ValueDeserializer::new(self).deserialize_tuple_struct(name, len, visitor)
+    }
+
+    fn deserialize_map<V>(self, visitor: V) -> Result<V::Value, Self::Error>
+    where
+        V: Visitor<'de>,
+    {
+        ValueDeserializer::new(self).deserialize_map(visitor)
+    }
+
+    fn deserialize_struct<V>(
+        self,
+        name: &'static str,
+        fields: &'static [&'static str],
+        visitor: V,
+    ) -> Result<V::Value, Self::Error>
+    where
+        V: Visitor<'de>,
+    {
+        ValueDeserializer::new(self).deserialize_struct(name, fields, visitor)
+    }
+
+    fn deserialize_enum<V>(
+        self,
+        name: &'static str,
+        variants: &'static [&'static str],
+        visitor: V,
+    ) -> Result<V::Value, Self::Error>
+    where
+        V: Visitor<'de>,
+    {
+        ValueDeserializer::new(self).deserialize_enum(name, variants, visitor)
+    }
+
+    fn deserialize_identifier<V>(self, visitor: V) -> Result<V::Value, Self::Error>
+    where
+        V: Visitor<'de>,
+    {
+        ValueDeserializer::new(self).deserialize_identifier(visitor)
+    }
+
+    fn deserialize_ignored_any<V>(self, visitor: V) -> Result<V::Value, Error>
+    where
+        V: Visitor<'de>,
+    {
+        ValueDeserializer::new(self).deserialize_ignored_any(visitor)
+    }
+}
+
 pub struct ValueDeserializer<'a, U, F> {
     value: Value,
     unused_key_callback: Option<&'a mut U>,
@@ -374,7 +604,13 @@ pub struct ValueDeserializer<'a, U, F> {
     is_transformed: bool,
 }
 
-impl<'a, U, F> ValueDeserializer<'a, U, F> {
+impl<'a>
+    ValueDeserializer<
+        'a,
+        fn(Value),
+        fn(Value) -> Result<Value, Box<dyn std::error::Error + 'static + Send + Sync>>,
+    >
+{
     pub(crate) fn new(value: Value) -> Self {
         ValueDeserializer {
             value,
@@ -383,7 +619,9 @@ impl<'a, U, F> ValueDeserializer<'a, U, F> {
             is_transformed: false,
         }
     }
+}
 
+impl<'a, U, F> ValueDeserializer<'a, U, F> {
     fn new_with(
         value: Value,
         unused_key_callback: Option<&'a mut U>,
@@ -1102,8 +1340,7 @@ where
         match self.iter.next() {
             Some((key, value)) => {
                 self.value = Some(value);
-                seed.deserialize(ValueDeserializer::<U, F>::new(key))
-                    .map(Some)
+                seed.deserialize(key).map(Some)
             }
             None => Ok(None),
         }
@@ -1240,14 +1477,12 @@ where
                     };
 
                     self.value = Some(value);
-                    break seed
-                        .deserialize(ValueDeserializer::<U, F>::new(key))
-                        .map(Some);
+                    break seed.deserialize(ValueDeserializer::new(key)).map(Some);
                 }
                 None if self.has_unprocessed_flatten_keys() => {
                     let key = self.flatten_keys[self.flatten_keys_done];
                     break seed
-                        .deserialize(ValueDeserializer::<U, F>::new(key.into()))
+                        .deserialize(ValueDeserializer::new(key.into()))
                         .map(Some);
                 }
                 None => break Ok(None),
@@ -1267,8 +1502,8 @@ where
             )),
             None if self.has_unprocessed_flatten_keys() => {
                 self.flatten_keys_done += 1;
-                let deserializer = MapDeserializer::new(
-                    self.rest.drain(..).collect(),
+                let deserializer = ValueDeserializer::new_with(
+                    Value::mapping(self.rest.drain(..).collect()),
                     self.unused_key_callback.as_deref_mut(),
                     self.field_transformer.as_deref_mut(),
                 );
