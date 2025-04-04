@@ -704,5 +704,5 @@ fn test_multi_flatten_fields() {
         dbt_serde_yaml::from_value::<Thing6>(dbt_serde_yaml::from_str::<Value>(yaml).unwrap())
             .unwrap_err()
             .to_string();
-    assert_eq!(expected_err, "missing field `y`");
+    assert_eq!(expected_err, "missing field `y` at line 1 column 1");
 }
