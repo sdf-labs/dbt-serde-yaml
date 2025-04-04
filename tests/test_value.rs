@@ -74,7 +74,7 @@ fn test_into_typed() {
     let value = dbt_serde_yaml::from_str::<Value>("xyz").unwrap();
     let s: String = value
         .into_typed(
-            |key: Value| {
+            |key: Value, _| {
                 unused_keys.push(key);
             },
             Ok,
@@ -86,7 +86,7 @@ fn test_into_typed() {
     let value = dbt_serde_yaml::from_str::<Value>("- first\n- second\n- third").unwrap();
     let arr: Vec<String> = value
         .into_typed(
-            |key: Value| {
+            |key: Value, _| {
                 unused_keys.push(key);
             },
             transformer,
@@ -116,7 +116,7 @@ fn test_into_typed() {
     let test: Test = value
         .clone()
         .into_typed(
-            |key: Value| {
+            |key: Value, _| {
                 unused_keys.push(key);
             },
             transformer,
@@ -134,7 +134,7 @@ fn test_into_typed() {
     unused_keys.clear();
     let test2: Test2 = value
         .into_typed(
-            |key: Value| {
+            |key: Value, _| {
                 unused_keys.push(key);
             },
             transformer,
@@ -180,7 +180,7 @@ fn test_into_typed() {
     let test3: Test3 = value
         .unwrap()
         .into_typed(
-            |key: Value| {
+            |key: Value, _| {
                 unused_keys.push(key);
             },
             transformer,
@@ -217,7 +217,7 @@ fn test_into_typed() {
     let test2_1: Test2 = (*test3.seconds[0])
         .clone()
         .into_typed(
-            |key: Value| {
+            |key: Value, _| {
                 unused_keys.push(key);
             },
             |v| {
@@ -255,7 +255,7 @@ fn test_into_typed_external_err() {
     let value = dbt_serde_yaml::from_str::<Value>("xyz").unwrap();
     let err = value
         .into_typed::<String, _, _>(
-            |key: Value| {
+            |key: Value, _| {
                 panic!("unexpected key {:?}", key);
             },
             |v| {
@@ -485,7 +485,7 @@ fn test_verbatim() {
     let value = dbt_serde_yaml::from_str::<Value>(yaml).unwrap();
     let thing: Thing = value
         .into_typed(
-            |key: Value| {
+            |key: Value, _| {
                 panic!("unexpected key {:?}", key);
             },
             |v| {
@@ -530,7 +530,7 @@ fn test_verbatim_flatten() {
     .unwrap();
     let thing2: Thing2 = value
         .into_typed(
-            |key: Value| {
+            |key: Value, _| {
                 panic!("unexpected key {:?}", key);
             },
             |v| {
@@ -576,7 +576,7 @@ fn test_flatten() {
     .unwrap();
     let thing3: Thing3 = value
         .into_typed(
-            |key: Value| {
+            |key: Value, _| {
                 panic!("unexpected key {:?}", key);
             },
             |v| {
@@ -640,7 +640,7 @@ fn test_verbatim_flatten_nested() {
     .unwrap();
     let thing4: Thing4 = value
         .into_typed(
-            |key: Value| {
+            |key: Value, _| {
                 panic!("unexpected key {:?}", key);
             },
             |v| {
@@ -661,4 +661,48 @@ fn test_verbatim_flatten_nested() {
         }
         .into()
     );
+}
+
+#[test]
+fn test_multi_flatten_fields() {
+    #[derive(Deserialize, PartialEq, Eq, Debug)]
+    struct Thing6 {
+        x: Option<i32>,
+        __thing7__: Thing7,
+        __rest__: HashMap<String, Option<i32>>,
+        y: i32,
+    }
+
+    #[derive(Deserialize, PartialEq, Eq, Debug)]
+    struct Thing7 {
+        a: Option<i32>,
+        __thing8__: Thing8,
+    }
+
+    #[derive(Deserialize, PartialEq, Eq, Debug)]
+    struct Thing8 {
+        b: Option<i32>,
+    }
+
+    let yaml = indoc! {"
+        a: 3
+        y: 5
+        b: 4
+    "};
+    let thing6 = Thing6::deserialize(dbt_serde_yaml::from_str::<Value>(yaml).unwrap()).unwrap();
+    assert_eq!(thing6.x, None);
+    assert_eq!(thing6.__thing7__.a, Some(3));
+    assert_eq!(thing6.__thing7__.__thing8__.b, Some(4));
+    assert_eq!(thing6.__rest__, HashMap::new());
+
+    let yaml = indoc! {"
+        a: 3
+        x: 1
+        b: 4
+    "};
+    let expected_err =
+        dbt_serde_yaml::from_value::<Thing6>(dbt_serde_yaml::from_str::<Value>(yaml).unwrap())
+            .unwrap_err()
+            .to_string();
+    assert_eq!(expected_err, "missing field `y`");
 }

@@ -252,7 +252,7 @@ impl<'de> EnumAccess<'de> for TaggedValue {
     type Error = Error;
     type Variant = ValueDeserializer<
         'static,
-        fn(Value),
+        fn(Value, Value),
         fn(Value) -> Result<Value, Box<dyn std::error::Error + 'static + Send + Sync>>,
     >;
 
