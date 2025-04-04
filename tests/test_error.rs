@@ -484,7 +484,7 @@ fn test_duplicate_keys() {
         overwrite: &str,
     ) {
         let mut duplicate_keys = Vec::new();
-        let actual = Value::from_str(yaml, |key| {
+        let actual = Value::from_str(yaml, |key, _| {
             duplicate_keys.push(key.clone());
             DuplicateKey::Ignore
         })
@@ -493,7 +493,7 @@ fn test_duplicate_keys() {
         assert_values_exact!(duplicate_keys, expected_duplicate_keys);
 
         let mut duplicate_keys = Vec::new();
-        let actual = Value::from_str(yaml, |key| {
+        let actual = Value::from_str(yaml, |key, _| {
             duplicate_keys.push(key.clone());
             DuplicateKey::Overwrite
         })

@@ -788,7 +788,7 @@ impl<'de> Deserialize<'de> for Mapping {
     where
         D: Deserializer<'de>,
     {
-        deserializer.deserialize_map(MappingVisitor(&mut |_| DuplicateKey::Error))
+        deserializer.deserialize_map(MappingVisitor(&mut |_, _| DuplicateKey::Error))
     }
 }
 
@@ -822,11 +822,11 @@ pub enum DuplicateKey {
     Overwrite,
 }
 
-pub(crate) struct MappingVisitor<'a, F: FnMut(&Value) -> DuplicateKey>(pub &'a mut F);
+pub(crate) struct MappingVisitor<'a, F: FnMut(&Value, &Value) -> DuplicateKey>(pub &'a mut F);
 
 impl<'de, F> serde::de::Visitor<'de> for MappingVisitor<'_, F>
 where
-    F: FnMut(&Value) -> DuplicateKey,
+    F: FnMut(&Value, &Value) -> DuplicateKey,
 {
     type Value = Mapping;
 
@@ -851,8 +851,8 @@ where
         let callback = &mut *self.0;
 
         while let Some(key) = data.next_key_seed(ValueVisitor(callback))? {
-            if mapping.contains_key(&key) {
-                match callback(&key) {
+            if let Some((existing_key, _)) = mapping.map.get_key_value(&key) {
+                match callback(&key, existing_key) {
                     DuplicateKey::Error => {
                         let entry = match mapping.entry(key) {
                             Entry::Occupied(entry) => entry,
