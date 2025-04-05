@@ -221,7 +221,7 @@ fn test_with_filename() {
     "};
 
     let value = {
-        let _f = dbt_serde_yaml::with_filename("filename.yml");
+        let _f = dbt_serde_yaml::with_filename(Some(std::path::PathBuf::from("filename.yml")));
         let value: dbt_serde_yaml::Value = dbt_serde_yaml::from_str(yaml).unwrap();
         assert_eq!(
             value.span().filename.as_deref(),
