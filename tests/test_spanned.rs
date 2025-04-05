@@ -221,12 +221,19 @@ fn test_with_filename() {
     "};
 
     let value = {
-        let _f = dbt_serde_yaml::with_filename("filename.yml");
+        let _f = dbt_serde_yaml::with_filename(Some(std::path::PathBuf::from("filename.yml")));
         let value: dbt_serde_yaml::Value = dbt_serde_yaml::from_str(yaml).unwrap();
         assert_eq!(
             value.span().filename.as_deref(),
             Some(PathBuf::from("filename.yml")).as_ref()
         );
+
+        {
+            let _f = dbt_serde_yaml::with_filename(None);
+            let value2: dbt_serde_yaml::Value = dbt_serde_yaml::from_str(yaml).unwrap();
+            assert!(value2.span().filename.is_none());
+        }
+
         dbt_serde_yaml::Value::deserialize(value.into_deserializer()).unwrap()
     };
 

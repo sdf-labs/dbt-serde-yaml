@@ -214,12 +214,12 @@ impl Drop for WithFilenameScope {
 }
 
 #[cfg(feature = "filename")]
-/// Set the current source filename. Returns a scope guard that restores the
-/// original filename when dropped.
-pub fn with_filename(filename: impl Into<std::path::PathBuf>) -> WithFilenameScope {
-    let filename = filename.into();
+/// Set or clear the source filename for subsequent deserialization.
+///
+/// Returns a scope guard that restores the original filename when dropped.
+pub fn with_filename(filename: Option<std::path::PathBuf>) -> WithFilenameScope {
     let original = FILENAME.with(|f| f.borrow_mut().take());
-    FILENAME.with(|f| *f.borrow_mut() = Some(std::sync::Arc::new(filename)));
+    FILENAME.with(|f| *f.borrow_mut() = filename.map(std::sync::Arc::new));
     WithFilenameScope { original }
 }
 
