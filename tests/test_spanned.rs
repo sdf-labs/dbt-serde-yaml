@@ -227,20 +227,20 @@ fn test_with_filename() {
             value.span().filename.as_deref(),
             Some(PathBuf::from("filename.yml")).as_ref()
         );
-        let res = {
-            let _f = dbt_serde_yaml::with_filename(None);
-            dbt_serde_yaml::Value::deserialize(value.into_deserializer()).unwrap()
-        };
-        let value2: dbt_serde_yaml::Value = dbt_serde_yaml::from_str(yaml).unwrap();
-        assert_eq!(
-            value2.span().filename.as_deref(),
-            Some(PathBuf::from("filename.yml")).as_ref()
-        );
 
-        res
+        {
+            let _f = dbt_serde_yaml::with_filename(None);
+            let value2: dbt_serde_yaml::Value = dbt_serde_yaml::from_str(yaml).unwrap();
+            assert!(value2.span().filename.is_none());
+        }
+
+        dbt_serde_yaml::Value::deserialize(value.into_deserializer()).unwrap()
     };
 
-    assert!(value.span().filename.is_none(),);
+    assert_eq!(
+        value.span().filename.as_deref(),
+        Some(PathBuf::from("filename.yml")).as_ref()
+    );
 }
 
 #[cfg(feature = "schemars")]
