@@ -17,10 +17,12 @@ itoa = "1.0"
 ryu = "1.0"
 serde = "1.0.195"
 unsafe-libyaml = "0.2.11"
+
 schemars = {version = "0.8", optional = true}
 
 [features]
 filename = []
+flatten_dunder = []
 
 [dev-dependencies]
 anyhow = "1.0.79"

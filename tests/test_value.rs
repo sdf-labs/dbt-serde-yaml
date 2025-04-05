@@ -559,6 +559,7 @@ fn test_verbatim_flatten() {
     );
 }
 
+#[cfg(feature = "flatten_dunder")]
 #[test]
 fn test_flatten() {
     #[derive(Deserialize, Serialize, PartialEq, Eq, Debug)]
@@ -618,6 +619,7 @@ fn test_flatten() {
     );
 }
 
+#[cfg(feature = "flatten_dunder")]
 #[test]
 fn test_verbatim_flatten_nested() {
     #[derive(Deserialize, PartialEq, Eq, Debug)]
@@ -663,6 +665,7 @@ fn test_verbatim_flatten_nested() {
     );
 }
 
+#[cfg(feature = "flatten_dunder")]
 #[test]
 fn test_multi_flatten_fields() {
     #[derive(Deserialize, PartialEq, Eq, Debug)]
