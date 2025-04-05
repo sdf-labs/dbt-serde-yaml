@@ -201,10 +201,18 @@ mod private {
     impl<T> Sealed for &T where T: ?Sized + Sealed {}
 }
 
+#[cfg(feature = "flatten_dunder")]
+#[inline]
 pub(crate) fn is_flatten_key(key: &[u8]) -> bool {
     key.len() > 4
         && key[0] == b'_'
         && key[1] == b'_'
         && key[key.len() - 2] == b'_'
         && key[key.len() - 1] == b'_'
+}
+
+#[cfg(not(feature = "flatten_dunder"))]
+#[inline]
+pub(crate) fn is_flatten_key(_key: &[u8]) -> bool {
+    false
 }
