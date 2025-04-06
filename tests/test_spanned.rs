@@ -254,6 +254,7 @@ fn test_schemars() {
     struct Point {
         x: Spanned<f64>,
         y: Verbatim<Spanned<String>>,
+        z: Spanned<Option<f64>>,
     }
 
     let schema = schema_for!(Point);
@@ -274,6 +275,11 @@ properties:
     format: double
   y:
     type: string
+  z:
+    type:
+    - number
+    - 'null'
+    format: double
 "}
     );
 }

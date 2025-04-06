@@ -187,16 +187,28 @@ where
         T::schema_name()
     }
 
-    fn json_schema(gen: &mut schemars::gen::SchemaGenerator) -> schemars::schema::Schema {
-        T::json_schema(gen)
+    fn json_schema(generator: &mut schemars::gen::SchemaGenerator) -> schemars::schema::Schema {
+        T::json_schema(generator)
     }
 
     fn is_referenceable() -> bool {
-        false
+        T::is_referenceable()
     }
 
     fn schema_id() -> std::borrow::Cow<'static, str> {
         T::schema_id()
+    }
+
+    #[doc(hidden)]
+    fn _schemars_private_non_optional_json_schema(
+        generator: &mut schemars::gen::SchemaGenerator,
+    ) -> schemars::schema::Schema {
+        T::_schemars_private_non_optional_json_schema(generator)
+    }
+
+    #[doc(hidden)]
+    fn _schemars_private_is_option() -> bool {
+        T::_schemars_private_is_option()
     }
 }
 
