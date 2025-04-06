@@ -736,9 +736,7 @@ $schema: http://json-schema.org/draft-07/schema#
 title: Thing
 type: object
 required:
-- v
 - y
-- z
 properties:
   v:
     type:
@@ -749,7 +747,8 @@ properties:
     - integer
     - 'null'
     format: int32
-  y: true
+  y:
+    $ref: '#/definitions/AnyValue'
   z:
     anyOf:
     - $ref: '#/definitions/AnyValue'
