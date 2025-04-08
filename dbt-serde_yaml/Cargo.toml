@@ -19,10 +19,12 @@ serde = "1.0.195"
 unsafe-libyaml = "0.2.11"
 
 schemars = {version = "0.8", optional = true}
+dbt-serde_yaml_schemars_derive = { workspace = true, optional = true }
 
 [features]
 filename = []
 flatten_dunder = []
+schemars = ["dep:schemars", "dep:dbt-serde_yaml_schemars_derive"]
 
 [dev-dependencies]
 anyhow = "1.0.79"

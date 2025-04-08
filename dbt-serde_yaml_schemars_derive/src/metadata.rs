@@ -11,7 +11,7 @@ pub struct SchemaMetadata<'a> {
     pub default: Option<TokenStream>,
 }
 
-impl<'a> SchemaMetadata<'a> {
+impl SchemaMetadata<'_> {
     pub fn apply_to_schema(&self, schema_expr: &mut TokenStream) {
         if let Some(title) = &self.title {
             *schema_expr = quote! {

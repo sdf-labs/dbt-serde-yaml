@@ -1,6 +1,10 @@
 [workspace]
 members = [
     "dbt-serde_yaml",
+    "dbt-serde_yaml_schemars_derive"
 ]
-
 resolver = "2"
+
+[workspace.dependencies]
+"dbt-serde_yaml" = { path = "dbt-serde_yaml" }
+"dbt-serde_yaml_schemars_derive" = { path = "dbt-serde_yaml_schemars_derive" }
