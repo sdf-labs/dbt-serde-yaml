@@ -606,9 +606,9 @@ pub struct ValueDeserializer<'a, U, F> {
     is_transformed: bool,
 }
 
-impl<'a>
+impl
     ValueDeserializer<
-        'a,
+        '_,
         fn(Value, Value),
         fn(Value) -> Result<Value, Box<dyn std::error::Error + 'static + Send + Sync>>,
     >
