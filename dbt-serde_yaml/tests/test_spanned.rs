@@ -246,9 +246,9 @@ fn test_with_filename() {
 #[cfg(feature = "schemars")]
 #[test]
 fn test_schemars() {
+    use dbt_serde_yaml::JsonSchema;
     use dbt_serde_yaml::Verbatim;
     use schemars::schema_for;
-    use schemars::JsonSchema;
 
     #[derive(Deserialize, Serialize, PartialEq, Debug, JsonSchema)]
     struct Point {

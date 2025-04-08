@@ -434,7 +434,7 @@ fn expr_for_struct(
     let (flattened_fields, property_fields): (Vec<_>, Vec<_>) = fields
         .iter()
         .filter(|f| !f.serde_attrs.skip_deserializing() || !f.serde_attrs.skip_serializing())
-        .partition(|f| f.serde_attrs.flatten());
+        .partition(|f| f.is_flatten());
 
     let set_container_default = match default {
         SerdeDefault::None => None,
