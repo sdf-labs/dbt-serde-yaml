@@ -715,8 +715,8 @@ fn test_multi_flatten_fields() {
 fn test_schemars() {
     #![allow(dead_code)]
 
+    use dbt_serde_yaml::JsonSchema;
     use schemars::schema_for;
-    use schemars::JsonSchema;
 
     #[derive(JsonSchema)]
     struct Thing {
@@ -755,6 +755,56 @@ properties:
     - type: 'null'
 definitions:
   AnyValue: true
+"}
+    );
+}
+
+#[cfg(all(feature = "schemars", feature = "flatten_dunder"))]
+#[test]
+fn test_schemars_flatten() {
+    #![allow(dead_code)]
+
+    use dbt_serde_yaml::JsonSchema;
+    use schemars::schema_for;
+
+    #[derive(Deserialize, JsonSchema)]
+    struct Thing {
+        a: i32,
+        #[serde(flatten)]
+        rest: Verbatim<HashMap<String, Option<i32>>>,
+    }
+
+    #[derive(Deserialize, JsonSchema)]
+    struct Thing2 {
+        x: Option<i32>,
+        y: Verbatim<i32>,
+        //        #[serde(flatten)]
+        __thing__: Option<Thing>,
+    }
+
+    let schema = schema_for!(Thing2);
+    let schema_string = dbt_serde_yaml::to_string(&schema).unwrap();
+    println!("{}", schema_string);
+    assert_eq!(
+        schema_string,
+        indoc! {"
+$schema: http://json-schema.org/draft-07/schema#
+title: Thing2
+type: object
+required:
+- y
+properties:
+  a:
+    type: integer
+    format: int32
+  x:
+    type:
+    - integer
+    - 'null'
+    format: int32
+  y:
+    type: integer
+    format: int32
 "}
     );
 }

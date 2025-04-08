@@ -23,7 +23,7 @@ dbt-serde_yaml_schemars_derive = { workspace = true, optional = true }
 
 [features]
 filename = []
-flatten_dunder = []
+flatten_dunder = ["dbt-serde_yaml_schemars_derive?/flatten_dunder"]
 schemars = ["dep:schemars", "dep:dbt-serde_yaml_schemars_derive"]
 
 [dev-dependencies]

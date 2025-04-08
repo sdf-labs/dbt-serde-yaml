@@ -78,4 +78,24 @@ impl Field<'_> {
     pub fn name(&self) -> &str {
         self.serde_attrs.name().deserialize_name()
     }
+
+    pub fn is_flatten(&self) -> bool {
+        #[cfg(feature = "flatten_dunder")]
+        {
+            self.serde_attrs.flatten()
+                || self.original.ident.as_ref().is_some_and(|ident| {
+                    let ident_string = ident.to_string();
+                    let ident = ident_string.as_bytes();
+                    ident.len() > 4
+                        && ident[0] == b'_'
+                        && ident[1] == b'_'
+                        && ident[ident.len() - 1] == b'_'
+                        && ident[ident.len() - 2] == b'_'
+                })
+        }
+        #[cfg(not(feature = "flatten_dunder"))]
+        {
+            self.serde_attrs.flatten()
+        }
+    }
 }
