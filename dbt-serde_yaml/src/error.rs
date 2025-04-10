@@ -93,7 +93,11 @@ impl Error {
         struct MessageNoMark<'a>(&'a ErrorImpl);
         impl Display for MessageNoMark<'_> {
             fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-                self.0.message_no_mark(f)
+                match &self.0 {
+                    ErrorImpl::Libyaml(err) => Display::fmt(err, f),
+                    ErrorImpl::Shared(err) => err.display(f),
+                    _ => self.0.message_no_mark(f),
+                }
             }
         }
         MessageNoMark(&self.0)
