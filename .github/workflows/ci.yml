@@ -38,6 +38,23 @@ jobs:
       - run: cargo test
       - run: cargo test --all-features
 
+  test_windows:
+    name: Rust (stable) on Windows
+    needs: pre_ci
+    if: needs.pre_ci.outputs.continue
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: stable
+      - run: cargo build
+      - run: cargo test
+      - run: cargo test --all-features
+
   doc:
     name: Documentation
     needs: pre_ci
