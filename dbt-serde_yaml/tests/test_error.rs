@@ -19,7 +19,9 @@ where
     T: Deserialize<'de> + Debug,
 {
     let result = dbt_serde_yaml::from_str::<T>(yaml);
-    assert_eq!(expected, result.unwrap_err().to_string());
+    let error = result.unwrap_err();
+    assert_eq!(expected, error.to_string());
+    assert!(expected.contains(error.display_no_mark().to_string().as_str()));
 
     let mut deserializer = Deserializer::from_str(yaml);
     if let Some(first_document) = deserializer.next() {
