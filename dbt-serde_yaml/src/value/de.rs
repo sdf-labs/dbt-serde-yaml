@@ -855,7 +855,7 @@ where
         let span = self.value.span();
         self.value.broadcast_end_mark();
         match self.value {
-            Value::Null(..) => visitor.visit_none(),
+            Value::Null(..) => visitor.visit_unit(),
             _ => visitor.visit_some(ValueDeserializer::<U, F> {
                 value: self.value,
                 unused_key_callback: self.unused_key_callback,
@@ -1745,7 +1745,7 @@ impl<'de> Deserializer<'de> for &'de Value {
         V: Visitor<'de>,
     {
         match self {
-            Value::Null(..) => visitor.visit_none(),
+            Value::Null(..) => visitor.visit_unit(),
             _ => visitor.visit_some(self),
         }
     }

@@ -720,10 +720,10 @@ fn test_schemars() {
 
     #[derive(JsonSchema)]
     struct Thing {
-        x: Option<i32>,
+        x: Option<Option<i32>>,
         y: Verbatim<Value>,
         z: Verbatim<Option<Value>>,
-        v: Verbatim<Option<String>>,
+        v: Verbatim<Option<Option<String>>>,
     }
 
     let schema = schema_for!(Thing);

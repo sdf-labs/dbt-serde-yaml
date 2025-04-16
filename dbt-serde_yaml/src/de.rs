@@ -1559,7 +1559,7 @@ impl<'de> de::Deserializer<'de> for &mut DeserializerFromEvents<'de, '_> {
         } else {
             *self.pos += 1;
             self.current_enum = None;
-            visitor.visit_none()
+            visitor.visit_unit()
         }
     }
 
