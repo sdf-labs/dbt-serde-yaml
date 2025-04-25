@@ -648,9 +648,14 @@ impl Value {
     ///     args: build
     ///     inputs:
     ///       - 'src/**/*'
-    ///   start:
+    ///   start: &start
     ///     <<: *webpack_shared
     ///     args: start
+    ///     outputs:
+    ///       - 'dist/**/*'
+    ///   progress:
+    ///     <<: *start
+    ///     args: progress
     /// ";
     ///
     /// let mut value: Value = dbt_serde_yaml::from_str(config).unwrap();
@@ -658,6 +663,9 @@ impl Value {
     ///
     /// assert_eq!(value["tasks"]["start"]["command"], "webpack");
     /// assert_eq!(value["tasks"]["start"]["args"], "start");
+    /// assert_eq!(value["tasks"]["progress"]["command"], "webpack");
+    /// assert_eq!(value["tasks"]["progress"]["args"], "progress");
+    /// assert_eq!(value["tasks"]["progress"]["outputs"][0], "dist/**/*");
     /// ```
     pub fn apply_merge(&mut self) -> Result<(), Error> {
         let mut stack = Vec::new();
@@ -665,37 +673,45 @@ impl Value {
         while let Some(node) = stack.pop() {
             match node {
                 Value::Mapping(mapping, ..) => {
-                    match mapping.remove("<<") {
-                        Some(Value::Mapping(merge, ..)) => {
-                            for (k, v) in merge {
-                                mapping.entry(k).or_insert(v);
+                    loop {
+                        match mapping.remove("<<") {
+                            Some(Value::Mapping(merge, ..)) => {
+                                for (k, v) in merge {
+                                    mapping.entry(k).or_insert(v);
+                                }
                             }
-                        }
-                        Some(Value::Sequence(sequence, ..)) => {
-                            for value in sequence {
-                                match value {
-                                    Value::Mapping(merge, ..) => {
-                                        for (k, v) in merge {
-                                            mapping.entry(k).or_insert(v);
+                            Some(Value::Sequence(sequence, ..)) => {
+                                for value in sequence {
+                                    match value {
+                                        Value::Mapping(merge, ..) => {
+                                            for (k, v) in merge {
+                                                mapping.entry(k).or_insert(v);
+                                            }
                                         }
-                                    }
-                                    Value::Sequence(..) => {
-                                        return Err(error::new(ErrorImpl::SequenceInMergeElement));
-                                    }
-                                    Value::Tagged(..) => {
-                                        return Err(error::new(ErrorImpl::TaggedInMerge));
-                                    }
-                                    _unexpected => {
-                                        return Err(error::new(ErrorImpl::ScalarInMergeElement));
+                                        Value::Sequence(..) => {
+                                            return Err(error::new(
+                                                ErrorImpl::SequenceInMergeElement,
+                                            ));
+                                        }
+                                        Value::Tagged(..) => {
+                                            return Err(error::new(ErrorImpl::TaggedInMerge));
+                                        }
+                                        _unexpected => {
+                                            return Err(error::new(
+                                                ErrorImpl::ScalarInMergeElement,
+                                            ));
+                                        }
                                     }
                                 }
                             }
+                            None => {
+                                break;
+                            }
+                            Some(Value::Tagged(..)) => {
+                                return Err(error::new(ErrorImpl::TaggedInMerge))
+                            }
+                            Some(_unexpected) => return Err(error::new(ErrorImpl::ScalarInMerge)),
                         }
-                        None => {}
-                        Some(Value::Tagged(..)) => {
-                            return Err(error::new(ErrorImpl::TaggedInMerge))
-                        }
-                        Some(_unexpected) => return Err(error::new(ErrorImpl::ScalarInMerge)),
                     }
                     stack.extend(mapping.values_mut());
                 }

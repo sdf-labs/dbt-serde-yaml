@@ -283,6 +283,7 @@ fn test_merge() {
         - &LEFT { x: 0, y: 2 }
         - &BIG { r: 10 }
         - &SMALL { r: 1 }
+        - &RECURSE { <<: *CENTER }
 
         # All the following maps are equal:
 
@@ -305,13 +306,18 @@ fn test_merge() {
           << : [ *BIG, *LEFT, *SMALL ]
           x: 1
           label: center/big
+
+        - # Merge with reference that also contains a merge
+          << : *RECURSE
+          r: 10
+          label: center/big
     "};
 
     let mut value: Value = dbt_serde_yaml::from_str(yaml).unwrap();
-    assert!(value.span().is_valid());
     value.apply_merge().unwrap();
-    for i in 5..=7 {
-        assert_eq!(value[4], value[i]);
+    assert!(value.span().is_valid());
+    for i in 6..=9 {
+        assert_eq!(value[5], value[i]);
     }
 }
 
