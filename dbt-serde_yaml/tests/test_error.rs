@@ -472,7 +472,7 @@ macro_rules! assert_values_exact {
         assert_eq!($actual.len(), $expected.len());
         for (actual, expected) in $actual.iter().zip($expected.iter()) {
             assert_eq!(actual, expected);
-            assert_eq!(actual.span(), expected.span());
+            assert_eq!(actual.1.span(), expected.1.span());
         }
     };
 }
@@ -481,22 +481,21 @@ macro_rules! assert_values_exact {
 fn test_duplicate_keys() {
     fn test_ignore_duplicate_keys(
         yaml: &str,
-        expected_duplicate_keys: &[Value],
+        expected_duplicate_keys: &[(String, Value)],
         ignore: &str,
         overwrite: &str,
     ) {
         let mut duplicate_keys = Vec::new();
-        let actual = Value::from_str(yaml, |key, _| {
-            duplicate_keys.push(key.clone());
+        let actual = Value::from_str(yaml, |path, key, _| {
+            duplicate_keys.push((path.to_string(), key.clone()));
             DuplicateKey::Ignore
         })
         .unwrap();
         assert_eq!(dbt_serde_yaml::to_string(&actual).unwrap(), ignore);
         assert_values_exact!(duplicate_keys, expected_duplicate_keys);
-
         let mut duplicate_keys = Vec::new();
-        let actual = Value::from_str(yaml, |key, _| {
-            duplicate_keys.push(key.clone());
+        let actual = Value::from_str(yaml, |path, key, _| {
+            duplicate_keys.push((path.to_string(), key.clone()));
             DuplicateKey::Overwrite
         })
         .unwrap();
@@ -513,9 +512,12 @@ fn test_duplicate_keys() {
     test_error::<Value>(yaml, expected);
     test_ignore_duplicate_keys(
         yaml,
-        &[Value::String(
+        &[(
             "thing".to_string(),
-            Span::new(Marker::new(16, 3, 1), Marker::new(23, 3, 8)),
+            Value::String(
+                "thing".to_string(),
+                Span::new(Marker::new(16, 3, 1), Marker::new(23, 3, 8)),
+            ),
         )],
         "thing: true\n",
         "thing: false\n",
@@ -530,10 +532,10 @@ fn test_duplicate_keys() {
     test_error::<Value>(yaml, expected);
     test_ignore_duplicate_keys(
         yaml,
-        &[Value::Null(Span::new(
-            Marker::new(15, 3, 1),
-            Marker::new(18, 3, 4),
-        ))],
+        &[(
+            "?".to_string(),
+            Value::Null(Span::new(Marker::new(15, 3, 1), Marker::new(18, 3, 4))),
+        )],
         "null: true\n",
         "null: false\n",
     );
@@ -547,9 +549,12 @@ fn test_duplicate_keys() {
     test_error::<Value>(yaml, expected);
     test_ignore_duplicate_keys(
         yaml,
-        &[Value::Number(
-            99.into(),
-            Span::new(Marker::new(13, 3, 1), Marker::new(17, 3, 5)),
+        &[(
+            "?".to_string(),
+            Value::Number(
+                99.into(),
+                Span::new(Marker::new(13, 3, 1), Marker::new(17, 3, 5)),
+            ),
         )],
         "99: true\n",
         "99: false\n",
@@ -564,9 +569,12 @@ fn test_duplicate_keys() {
     test_error::<Value>(yaml, expected);
     test_ignore_duplicate_keys(
         yaml,
-        &[Value::Mapping(
-            dbt_serde_yaml::Mapping::new(),
-            Span::new(Marker::new(13, 3, 1), Marker::new(17, 3, 5)),
+        &[(
+            "?".to_string(),
+            Value::Mapping(
+                dbt_serde_yaml::Mapping::new(),
+                Span::new(Marker::new(13, 3, 1), Marker::new(17, 3, 5)),
+            ),
         )],
         "{}: true\n",
         "{}: false\n",
@@ -583,9 +591,12 @@ fn test_duplicate_keys() {
     test_error::<Value>(yaml, expected);
     test_ignore_duplicate_keys(
         yaml,
-        &[Value::String(
-            "key".to_string(),
-            Span::new(Marker::new(40, 5, 5), Marker::new(45, 5, 10)),
+        &[(
+            ".[1].map.key".to_string(),
+            Value::String(
+                "key".to_string(),
+                Span::new(Marker::new(40, 5, 5), Marker::new(45, 5, 10)),
+            ),
         )],
         "- x: true\n- map:\n    key: true\n",
         "- x: true\n- map:\n    key: false\n",

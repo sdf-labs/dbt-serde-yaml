@@ -1,5 +1,6 @@
 //! A YAML mapping and its iterator types.
 
+use crate::path::Path;
 use crate::value::ValueVisitor;
 use crate::{private, Value};
 use indexmap::IndexMap;
@@ -788,7 +789,10 @@ impl<'de> Deserialize<'de> for Mapping {
     where
         D: Deserializer<'de>,
     {
-        deserializer.deserialize_map(MappingVisitor(&mut |_, _| DuplicateKey::Error))
+        deserializer.deserialize_map(MappingVisitor {
+            callback: &mut |_, _, _| DuplicateKey::Error,
+            path: Path::Root,
+        })
     }
 }
 
@@ -822,11 +826,14 @@ pub enum DuplicateKey {
     Overwrite,
 }
 
-pub(crate) struct MappingVisitor<'a, F: FnMut(&Value, &Value) -> DuplicateKey>(pub &'a mut F);
+pub(crate) struct MappingVisitor<'a, 'b, F: FnMut(Path<'_>, &Value, &Value) -> DuplicateKey> {
+    pub callback: &'a mut F,
+    pub path: Path<'b>,
+}
 
-impl<'de, F> serde::de::Visitor<'de> for MappingVisitor<'_, F>
+impl<'de, F> serde::de::Visitor<'de> for MappingVisitor<'_, '_, F>
 where
-    F: FnMut(&Value, &Value) -> DuplicateKey,
+    F: FnMut(Path<'_>, &Value, &Value) -> DuplicateKey,
 {
     type Value = Mapping;
 
@@ -848,11 +855,23 @@ where
         A: serde::de::MapAccess<'de>,
     {
         let mut mapping = Mapping::new();
-        let callback = &mut *self.0;
+        let callback = &mut *self.callback;
 
-        while let Some(key) = data.next_key_seed(ValueVisitor(callback))? {
+        while let Some(key) = data.next_key_seed(ValueVisitor {
+            callback,
+            path: self.path,
+        })? {
+            let path = if let Some(key) = key.as_str() {
+                Path::Map {
+                    parent: &self.path,
+                    key,
+                }
+            } else {
+                Path::Unknown { parent: &self.path }
+            };
+
             if let Some((existing_key, _)) = mapping.map.get_key_value(&key) {
-                match callback(&key, existing_key) {
+                match callback(path, &key, existing_key) {
                     DuplicateKey::Error => {
                         let entry = match mapping.entry(key) {
                             Entry::Occupied(entry) => entry,
@@ -862,15 +881,15 @@ where
                         return Err(serde::de::Error::custom(DuplicateKeyError { entry }));
                     }
                     DuplicateKey::Ignore => {
-                        let _ = data.next_value_seed(ValueVisitor(callback))?;
+                        let _ = data.next_value_seed(ValueVisitor { callback, path })?;
                     }
                     DuplicateKey::Overwrite => {
-                        let value = data.next_value_seed(ValueVisitor(callback))?;
+                        let value = data.next_value_seed(ValueVisitor { callback, path })?;
                         mapping.insert(key, value);
                     }
                 }
             } else {
-                let value = data.next_value_seed(ValueVisitor(callback))?;
+                let value = data.next_value_seed(ValueVisitor { callback, path })?;
                 mapping.insert(key, value);
             }
         }
