@@ -61,11 +61,12 @@ impl Value {
     ) -> Result<T, Error>
     where
         T: Deserialize<'de>,
-        U: FnMut(Value, Value),
+        U: FnMut(Path<'_>, Value, Value),
         F: FnMut(Value) -> Result<Value, Box<dyn std::error::Error + 'static + Send + Sync>>,
     {
         let de = ValueDeserializer::new_with(
             self,
+            Path::Root,
             Some(&mut unused_key_callback),
             Some(&mut field_transformer),
         );
@@ -297,19 +298,25 @@ impl Value {
     }
 }
 
-fn visit_sequence<'de, 'a, V, U, F>(
+fn visit_sequence<'de, 'a, 'b, V, U, F>(
     sequence: Sequence,
+    current_path: Path<'b>,
     visitor: V,
     unused_key_callback: Option<&'a mut U>,
     field_transformer: Option<&'a mut F>,
 ) -> Result<V::Value, Error>
 where
     V: Visitor<'de>,
-    U: FnMut(Value, Value),
+    U: for<'p> FnMut(Path<'p>, Value, Value),
     F: FnMut(Value) -> Result<Value, Box<dyn std::error::Error + 'static + Send + Sync>>,
 {
     let len = sequence.len();
-    let mut deserializer = SeqDeserializer::new(sequence, unused_key_callback, field_transformer);
+    let mut deserializer = SeqDeserializer::new(
+        sequence,
+        current_path,
+        unused_key_callback,
+        field_transformer,
+    );
     let seq = visitor.visit_seq(&mut deserializer)?;
     let remaining = deserializer.iter.len();
     if remaining == 0 {
@@ -334,19 +341,25 @@ where
     }
 }
 
-fn visit_mapping<'de, 'a, V, U, F>(
+fn visit_mapping<'de, 'a, 'b, V, U, F>(
     mapping: Mapping,
+    current_path: Path<'b>,
     visitor: V,
     unused_key_callback: Option<&'a mut U>,
     field_transformer: Option<&'a mut F>,
 ) -> Result<V::Value, Error>
 where
     V: Visitor<'de>,
-    U: FnMut(Value, Value),
+    U: for<'p> FnMut(Path<'p>, Value, Value),
     F: FnMut(Value) -> Result<Value, Box<dyn std::error::Error + 'static + Send + Sync>>,
 {
     let len = mapping.len();
-    let mut deserializer = MapDeserializer::new(mapping, unused_key_callback, field_transformer);
+    let mut deserializer = MapDeserializer::new(
+        mapping,
+        current_path,
+        unused_key_callback,
+        field_transformer,
+    );
     let map = visitor.visit_map(&mut deserializer)?;
     let remaining = deserializer.iter.len();
     if remaining == 0 {
@@ -356,8 +369,9 @@ where
     }
 }
 
-fn visit_struct<'de, 'a, V, U, F>(
+fn visit_struct<'de, 'a, 'b, V, U, F>(
     mapping: Mapping,
+    current_path: Path<'b>,
     visitor: V,
     known_keys: &'static [&'static str],
     unused_key_callback: Option<&'a mut U>,
@@ -365,12 +379,17 @@ fn visit_struct<'de, 'a, V, U, F>(
 ) -> Result<V::Value, Error>
 where
     V: Visitor<'de>,
-    U: FnMut(Value, Value),
+    U: for<'p> FnMut(Path<'p>, Value, Value),
     F: FnMut(Value) -> Result<Value, Box<dyn std::error::Error + 'static + Send + Sync>>,
 {
     let len = mapping.len();
-    let mut deserializer =
-        StructDeserializer::new(mapping, known_keys, unused_key_callback, field_transformer);
+    let mut deserializer = StructDeserializer::new(
+        mapping,
+        current_path,
+        known_keys,
+        unused_key_callback,
+        field_transformer,
+    );
     let map = visitor.visit_map(&mut deserializer)?;
     let remaining = deserializer.iter.len() + deserializer.rest.len();
     if remaining == 0 {
@@ -625,8 +644,9 @@ impl<'de> Deserializer<'de> for Value {
     }
 }
 
-pub struct ValueDeserializer<'a, U, F> {
+pub struct ValueDeserializer<'a, 'b, U, F> {
     value: Value,
+    path: Path<'b>,
     unused_key_callback: Option<&'a mut U>,
     field_transformer: Option<&'a mut F>,
     // Flag indicating whether the value has been already been transformed by
@@ -637,13 +657,15 @@ pub struct ValueDeserializer<'a, U, F> {
 impl
     ValueDeserializer<
         '_,
-        fn(Value, Value),
+        '_,
+        fn(Path<'_>, Value, Value),
         fn(Value) -> Result<Value, Box<dyn std::error::Error + 'static + Send + Sync>>,
     >
 {
     pub(crate) fn new(value: Value) -> Self {
         ValueDeserializer {
             value,
+            path: Path::Root,
             unused_key_callback: None,
             field_transformer: None,
             is_transformed: false,
@@ -651,26 +673,26 @@ impl
     }
 }
 
-impl<'a, U, F> ValueDeserializer<'a, U, F> {
+impl<'a, 'b, U, F> ValueDeserializer<'a, 'b, U, F>
+where
+    U: for<'p> FnMut(Path<'p>, Value, Value),
+    F: FnMut(Value) -> Result<Value, Box<dyn std::error::Error + 'static + Send + Sync>>,
+{
     fn new_with(
         value: Value,
+        path: Path<'b>,
         unused_key_callback: Option<&'a mut U>,
         field_transformer: Option<&'a mut F>,
     ) -> Self {
         ValueDeserializer {
             value,
+            path,
             unused_key_callback,
             field_transformer,
             is_transformed: false,
         }
     }
-}
 
-impl<U, F> ValueDeserializer<'_, U, F>
-where
-    U: FnMut(Value, Value),
-    F: FnMut(Value) -> Result<Value, Box<dyn std::error::Error + 'static + Send + Sync>>,
-{
     fn maybe_apply_transformation(
         &mut self,
     ) -> Result<(), Box<dyn std::error::Error + 'static + Send + Sync>> {
@@ -683,9 +705,9 @@ where
     }
 }
 
-impl<'de, U, F> Deserializer<'de> for ValueDeserializer<'_, U, F>
+impl<'de, U, F> Deserializer<'de> for ValueDeserializer<'_, '_, U, F>
 where
-    U: FnMut(Value, Value),
+    U: for<'p> FnMut(Path<'p>, Value, Value),
     F: FnMut(Value) -> Result<Value, Box<dyn std::error::Error + 'static + Send + Sync>>,
 {
     type Error = Error;
@@ -702,12 +724,20 @@ where
             Value::Bool(v, ..) => visitor.visit_bool(v),
             Value::Number(n, ..) => n.deserialize_any(visitor),
             Value::String(v, ..) => visitor.visit_string(v),
-            Value::Sequence(v, ..) => {
-                visit_sequence(v, visitor, self.unused_key_callback, self.field_transformer)
-            }
-            Value::Mapping(v, ..) => {
-                visit_mapping(v, visitor, self.unused_key_callback, self.field_transformer)
-            }
+            Value::Sequence(v, ..) => visit_sequence(
+                v,
+                self.path,
+                visitor,
+                self.unused_key_callback,
+                self.field_transformer,
+            ),
+            Value::Mapping(v, ..) => visit_mapping(
+                v,
+                self.path,
+                visitor,
+                self.unused_key_callback,
+                self.field_transformer,
+            ),
             Value::Tagged(tagged, ..) => visitor.visit_enum(*tagged),
         }
         .map_err(|e| error::set_span(e, span))
@@ -867,9 +897,13 @@ where
         self.value.broadcast_end_mark();
         match self.value.untag() {
             Value::String(v, ..) => visitor.visit_string(v),
-            Value::Sequence(v, ..) => {
-                visit_sequence(v, visitor, self.unused_key_callback, self.field_transformer)
-            }
+            Value::Sequence(v, ..) => visit_sequence(
+                v,
+                self.path,
+                visitor,
+                self.unused_key_callback,
+                self.field_transformer,
+            ),
             other => Err(other.invalid_type(&visitor)),
         }
         .map_err(|e| error::set_span(e, span))
@@ -886,6 +920,7 @@ where
             Value::Null(..) => visitor.visit_unit(),
             _ => visitor.visit_some(ValueDeserializer::<U, F> {
                 value: self.value,
+                path: self.path,
                 unused_key_callback: self.unused_key_callback,
                 field_transformer: self.field_transformer,
                 is_transformed: true,
@@ -938,11 +973,16 @@ where
         let span = self.value.span();
         self.value.broadcast_end_mark();
         match self.value.untag() {
-            Value::Sequence(v, ..) => {
-                visit_sequence(v, visitor, self.unused_key_callback, self.field_transformer)
-            }
+            Value::Sequence(v, ..) => visit_sequence(
+                v,
+                self.path,
+                visitor,
+                self.unused_key_callback,
+                self.field_transformer,
+            ),
             Value::Null(..) => visit_sequence(
                 Sequence::new(),
+                self.path,
                 visitor,
                 self.unused_key_callback,
                 self.field_transformer,
@@ -979,11 +1019,16 @@ where
         let span = self.value.span();
         self.value.broadcast_end_mark();
         match self.value.untag() {
-            Value::Mapping(v, ..) => {
-                visit_mapping(v, visitor, self.unused_key_callback, self.field_transformer)
-            }
+            Value::Mapping(v, ..) => visit_mapping(
+                v,
+                self.path,
+                visitor,
+                self.unused_key_callback,
+                self.field_transformer,
+            ),
             Value::Null(..) => visit_mapping(
                 Mapping::new(),
+                self.path,
                 visitor,
                 self.unused_key_callback,
                 self.field_transformer,
@@ -1008,6 +1053,7 @@ where
         match self.value.untag() {
             Value::Mapping(v, ..) => visit_struct(
                 v,
+                self.path,
                 visitor,
                 fields,
                 self.unused_key_callback,
@@ -1015,6 +1061,7 @@ where
             ),
             Value::Null(..) => visit_struct(
                 Mapping::new(),
+                self.path,
                 visitor,
                 fields,
                 self.unused_key_callback,
@@ -1046,6 +1093,7 @@ where
                         tag = tagged.tag.string;
                         tagged::nobang(&tag)
                     },
+                    path: self.path,
                     value: Some(tagged.value),
                     unused_key_callback: self.unused_key_callback,
                     field_transformer: self.field_transformer,
@@ -1055,6 +1103,7 @@ where
                         tag = variant;
                         &tag
                     },
+                    path: self.path,
                     value: None,
                     unused_key_callback: self.unused_key_callback,
                     field_transformer: self.field_transformer,
@@ -1087,20 +1136,21 @@ where
     }
 }
 
-struct EnumDeserializer<'a, U, F> {
+struct EnumDeserializer<'a, 'b, U, F> {
     tag: &'a str,
+    path: Path<'b>,
     value: Option<Value>,
     unused_key_callback: Option<&'a mut U>,
     field_transformer: Option<&'a mut F>,
 }
 
-impl<'de, 'a, U, F> EnumAccess<'de> for EnumDeserializer<'a, U, F>
+impl<'de, 'a, 'b, U, F> EnumAccess<'de> for EnumDeserializer<'a, 'b, U, F>
 where
-    U: FnMut(Value, Value),
+    U: for<'p> FnMut(Path<'p>, Value, Value),
     F: FnMut(Value) -> Result<Value, Box<dyn std::error::Error + 'static + Send + Sync>>,
 {
     type Error = Error;
-    type Variant = VariantDeserializer<'a, U, F>;
+    type Variant = VariantDeserializer<'a, 'b, U, F>;
 
     fn variant_seed<V>(self, seed: V) -> Result<(V::Value, Self::Variant), Error>
     where
@@ -1110,6 +1160,7 @@ where
         let variant = seed.deserialize(str_de)?;
         let visitor = VariantDeserializer {
             value: self.value,
+            path: self.path,
             unused_key_callback: self.unused_key_callback,
             field_transformer: self.field_transformer,
         };
@@ -1117,15 +1168,16 @@ where
     }
 }
 
-struct VariantDeserializer<'a, U, F> {
+struct VariantDeserializer<'a, 'b, U, F> {
     value: Option<Value>,
+    path: Path<'b>,
     unused_key_callback: Option<&'a mut U>,
     field_transformer: Option<&'a mut F>,
 }
 
-impl<'de, U, F> VariantAccess<'de> for VariantDeserializer<'_, U, F>
+impl<'de, U, F> VariantAccess<'de> for VariantDeserializer<'_, '_, U, F>
 where
-    U: FnMut(Value, Value),
+    U: for<'p> FnMut(Path<'p>, Value, Value),
     F: FnMut(Value) -> Result<Value, Box<dyn std::error::Error + 'static + Send + Sync>>,
 {
     type Error = Error;
@@ -1144,6 +1196,7 @@ where
         match self.value {
             Some(value) => seed.deserialize(ValueDeserializer::new_with(
                 value,
+                self.path,
                 self.unused_key_callback,
                 self.field_transformer,
             )),
@@ -1160,7 +1213,12 @@ where
     {
         match self.value {
             Some(Value::Sequence(v, ..)) => Deserializer::deserialize_any(
-                SeqDeserializer::new(v, self.unused_key_callback, self.field_transformer),
+                SeqDeserializer::new(
+                    v,
+                    self.path,
+                    self.unused_key_callback,
+                    self.field_transformer,
+                ),
                 visitor,
             ),
             _ => Err(Error::invalid_type(
@@ -1182,6 +1240,7 @@ where
             Some(Value::Mapping(v, ..)) => Deserializer::deserialize_any(
                 StructDeserializer::new(
                     v,
+                    self.path,
                     fields,
                     self.unused_key_callback,
                     self.field_transformer,
@@ -1196,9 +1255,9 @@ where
     }
 }
 
-impl<'de, U, F> VariantAccess<'de> for ValueDeserializer<'_, U, F>
+impl<'de, U, F> VariantAccess<'de> for ValueDeserializer<'_, '_, U, F>
 where
-    U: FnMut(Value, Value),
+    U: for<'p> FnMut(Path<'p>, Value, Value),
     F: FnMut(Value) -> Result<Value, Box<dyn std::error::Error + 'static + Send + Sync>>,
 {
     type Error = Error;
@@ -1220,7 +1279,12 @@ where
     {
         if let Value::Sequence(v, ..) = self.value {
             Deserializer::deserialize_any(
-                SeqDeserializer::new(v, self.unused_key_callback, self.field_transformer),
+                SeqDeserializer::new(
+                    v,
+                    self.path,
+                    self.unused_key_callback,
+                    self.field_transformer,
+                ),
                 visitor,
             )
         } else {
@@ -1243,6 +1307,7 @@ where
             Deserializer::deserialize_any(
                 StructDeserializer::new(
                     v,
+                    self.path,
                     fields,
                     self.unused_key_callback,
                     self.field_transformer,
@@ -1258,33 +1323,38 @@ where
     }
 }
 
-pub(crate) struct SeqDeserializer<'a, U, F> {
+pub(crate) struct SeqDeserializer<'a, 'b, U, F> {
     iter: vec::IntoIter<Value>,
+    current_idx: usize,
+    path: Path<'b>,
     unused_key_callback: Option<&'a mut U>,
     field_transformer: Option<&'a mut F>,
 }
 
-impl<'a, U, F> SeqDeserializer<'a, U, F>
+impl<'a, 'b, U, F> SeqDeserializer<'a, 'b, U, F>
 where
-    U: FnMut(Value, Value),
+    U: for<'p> FnMut(Path<'p>, Value, Value),
     F: FnMut(Value) -> Result<Value, Box<dyn std::error::Error + 'static + Send + Sync>>,
 {
     pub(crate) fn new(
         vec: Vec<Value>,
+        current_path: Path<'b>,
         unused_key_callback: Option<&'a mut U>,
         field_transformer: Option<&'a mut F>,
     ) -> Self {
         SeqDeserializer {
             iter: vec.into_iter(),
+            current_idx: 0,
+            path: current_path,
             unused_key_callback,
             field_transformer,
         }
     }
 }
 
-impl<'de, U, F> Deserializer<'de> for SeqDeserializer<'_, U, F>
+impl<'de, U, F> Deserializer<'de> for SeqDeserializer<'_, '_, U, F>
 where
-    U: FnMut(Value, Value),
+    U: for<'p> FnMut(Path<'p>, Value, Value),
     F: FnMut(Value) -> Result<Value, Box<dyn std::error::Error + 'static + Send + Sync>>,
 {
     type Error = Error;
@@ -1323,9 +1393,9 @@ where
     }
 }
 
-impl<'de, U, F> SeqAccess<'de> for SeqDeserializer<'_, U, F>
+impl<'de, U, F> SeqAccess<'de> for SeqDeserializer<'_, '_, U, F>
 where
-    U: FnMut(Value, Value),
+    U: for<'p> FnMut(Path<'p>, Value, Value),
     F: FnMut(Value) -> Result<Value, Box<dyn std::error::Error + 'static + Send + Sync>>,
 {
     type Error = Error;
@@ -1334,10 +1404,15 @@ where
     where
         T: DeserializeSeed<'de>,
     {
+        self.current_idx += 1;
         match self.iter.next() {
             Some(value) => {
                 let deserializer = ValueDeserializer::new_with(
                     value,
+                    Path::Seq {
+                        parent: &self.path,
+                        index: self.current_idx - 1,
+                    },
                     self.unused_key_callback.as_deref_mut(),
                     self.field_transformer.as_deref_mut(),
                 );
@@ -1355,25 +1430,30 @@ where
     }
 }
 
-pub(crate) struct MapDeserializer<'a, U, F> {
+pub(crate) struct MapDeserializer<'a, 'b, U, F> {
     iter: <Mapping as IntoIterator>::IntoIter,
+    current_key: Option<String>,
+    path: Path<'b>,
     value: Option<Value>,
     unused_key_callback: Option<&'a mut U>,
     field_transformer: Option<&'a mut F>,
 }
 
-impl<'a, U, F> MapDeserializer<'a, U, F>
+impl<'a, 'b, U, F> MapDeserializer<'a, 'b, U, F>
 where
-    U: FnMut(Value, Value),
+    U: for<'p> FnMut(Path<'p>, Value, Value),
     F: FnMut(Value) -> Result<Value, Box<dyn std::error::Error + 'static + Send + Sync>>,
 {
     pub(crate) fn new(
         map: Mapping,
+        current_path: Path<'b>,
         unused_key_callback: Option<&'a mut U>,
         field_transformer: Option<&'a mut F>,
     ) -> Self {
         MapDeserializer {
             iter: map.into_iter(),
+            current_key: None,
+            path: current_path,
             value: None,
             unused_key_callback,
             field_transformer,
@@ -1381,9 +1461,9 @@ where
     }
 }
 
-impl<'de, U, F> MapAccess<'de> for MapDeserializer<'_, U, F>
+impl<'de, U, F> MapAccess<'de> for MapDeserializer<'_, '_, U, F>
 where
-    U: FnMut(Value, Value),
+    U: for<'p> FnMut(Path<'p>, Value, Value),
     F: FnMut(Value) -> Result<Value, Box<dyn std::error::Error + 'static + Send + Sync>>,
 {
     type Error = Error;
@@ -1392,9 +1472,11 @@ where
     where
         T: DeserializeSeed<'de>,
     {
+        self.current_key = None;
         match self.iter.next() {
             Some((key, value)) => {
                 self.value = Some(value);
+                self.current_key = key.as_str().map(|s| s.to_string());
                 seed.deserialize(key).map(Some)
             }
             None => Ok(None),
@@ -1408,6 +1490,13 @@ where
         match self.value.take() {
             Some(value) => seed.deserialize(ValueDeserializer::new_with(
                 value,
+                match self.current_key {
+                    Some(ref key) => Path::Map {
+                        parent: &self.path,
+                        key,
+                    },
+                    None => Path::Unknown { parent: &self.path },
+                },
                 self.unused_key_callback.as_deref_mut(),
                 self.field_transformer.as_deref_mut(),
             )),
@@ -1423,9 +1512,9 @@ where
     }
 }
 
-impl<'de, U, F> Deserializer<'de> for MapDeserializer<'_, U, F>
+impl<'de, U, F> Deserializer<'de> for MapDeserializer<'_, '_, U, F>
 where
-    U: FnMut(Value, Value),
+    U: for<'p> FnMut(Path<'p>, Value, Value),
     F: FnMut(Value) -> Result<Value, Box<dyn std::error::Error + 'static + Send + Sync>>,
 {
     type Error = Error;
@@ -1453,8 +1542,10 @@ where
     }
 }
 
-pub(crate) struct StructDeserializer<'a, U, F> {
+pub(crate) struct StructDeserializer<'a, 'b, U, F> {
     iter: <Mapping as IntoIterator>::IntoIter,
+    current_key: Option<String>,
+    path: Path<'b>,
     value: Option<Value>,
     normal_keys: HashSet<&'static str>,
     flatten_keys: Vec<&'static str>,
@@ -1464,13 +1555,14 @@ pub(crate) struct StructDeserializer<'a, U, F> {
     flatten_keys_done: usize,
 }
 
-impl<'a, U, F> StructDeserializer<'a, U, F>
+impl<'a, 'b, U, F> StructDeserializer<'a, 'b, U, F>
 where
-    U: FnMut(Value, Value),
+    U: for<'p> FnMut(Path<'p>, Value, Value),
     F: FnMut(Value) -> Result<Value, Box<dyn std::error::Error + 'static + Send + Sync>>,
 {
     pub(crate) fn new(
         map: Mapping,
+        current_path: Path<'b>,
         known_keys: &'static [&'static str],
         unused_key_callback: Option<&'a mut U>,
         field_transformer: Option<&'a mut F>,
@@ -1481,6 +1573,8 @@ where
             .partition(|key| !crate::is_flatten_key(key.as_bytes()));
         StructDeserializer {
             iter: map.into_iter(),
+            current_key: None,
+            path: current_path,
             value: None,
             normal_keys: normal_keys.into_iter().collect(),
             flatten_keys,
@@ -1500,9 +1594,9 @@ where
     }
 }
 
-impl<'de, U, F> MapAccess<'de> for StructDeserializer<'_, U, F>
+impl<'de, U, F> MapAccess<'de> for StructDeserializer<'_, '_, U, F>
 where
-    U: FnMut(Value, Value),
+    U: for<'p> FnMut(Path<'p>, Value, Value),
     F: FnMut(Value) -> Result<Value, Box<dyn std::error::Error + 'static + Send + Sync>>,
 {
     type Error = Error;
@@ -1511,6 +1605,7 @@ where
     where
         T: DeserializeSeed<'de>,
     {
+        self.current_key = None;
         loop {
             match self.iter.next() {
                 Some((key, value)) => {
@@ -1525,18 +1620,25 @@ where
                                 continue;
                             } else if let Some(callback) = &mut self.unused_key_callback {
                                 value.broadcast_end_mark();
-                                callback(key, value);
+                                let key_string = key_str.to_string();
+                                let path = Path::Map {
+                                    parent: &self.path,
+                                    key: &key_string,
+                                };
+                                callback(path, key, value);
                                 continue;
                             }
                         }
                         _ => {}
                     };
 
+                    self.current_key = key.as_str().map(|s| s.to_string());
                     self.value = Some(value);
                     break seed.deserialize(ValueDeserializer::new(key)).map(Some);
                 }
                 None if self.has_unprocessed_flatten_keys() => {
                     let key = self.flatten_keys[self.flatten_keys_done];
+                    self.current_key = Some(key.to_string());
                     break seed
                         .deserialize(ValueDeserializer::new(key.into()))
                         .map(Some);
@@ -1553,6 +1655,13 @@ where
         match self.value.take() {
             Some(value) => seed.deserialize(ValueDeserializer::new_with(
                 value,
+                match self.current_key {
+                    Some(ref key) => Path::Map {
+                        parent: &self.path,
+                        key,
+                    },
+                    None => Path::Unknown { parent: &self.path },
+                },
                 self.unused_key_callback.as_deref_mut(),
                 self.field_transformer.as_deref_mut(),
             )),
@@ -1560,12 +1669,19 @@ where
                 self.flatten_keys_done += 1;
 
                 let flattened = Value::mapping(self.rest.drain(..).collect());
-                let mut collect_unused = |key, value| {
+                let mut collect_unused = |_: Path<'_>, key, value| {
                     self.rest.push((key, value));
                 };
 
                 let deserializer = ValueDeserializer::new_with(
                     flattened,
+                    match self.current_key {
+                        Some(ref key) => Path::Map {
+                            parent: &self.path,
+                            key,
+                        },
+                        None => Path::Unknown { parent: &self.path },
+                    },
                     Some(&mut collect_unused),
                     self.field_transformer.as_deref_mut(),
                 );
@@ -1584,9 +1700,9 @@ where
     }
 }
 
-impl<'de, U, F> Deserializer<'de> for StructDeserializer<'_, U, F>
+impl<'de, U, F> Deserializer<'de> for StructDeserializer<'_, '_, U, F>
 where
-    U: FnMut(Value, Value),
+    U: for<'p> FnMut(Path<'p>, Value, Value),
     F: FnMut(Value) -> Result<Value, Box<dyn std::error::Error + 'static + Send + Sync>>,
 {
     type Error = Error;
