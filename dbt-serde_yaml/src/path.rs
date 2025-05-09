@@ -1,13 +1,36 @@
+//! Path to the current value in the input.
+
 use std::fmt::{self, Display};
 
 /// Path to the current value in the input, like `dependencies.serde.typo1`.
 #[derive(Copy, Clone)]
 pub enum Path<'a> {
+    /// The root of the input.
     Root,
-    Seq { parent: &'a Path<'a>, index: usize },
-    Map { parent: &'a Path<'a>, key: &'a str },
-    Alias { parent: &'a Path<'a> },
-    Unknown { parent: &'a Path<'a> },
+    /// A sequence index.
+    Seq {
+        /// The path to the parent value.
+        parent: &'a Path<'a>,
+        /// The index of the current value.
+        index: usize,
+    },
+    /// A map key.
+    Map {
+        /// The path to the parent value.
+        parent: &'a Path<'a>,
+        /// The key of the current value.
+        key: &'a str,
+    },
+    /// An alias.
+    Alias {
+        /// The path to the parent value.
+        parent: &'a Path<'a>,
+    },
+    /// An unknown path.
+    Unknown {
+        /// The path to the parent value.
+        parent: &'a Path<'a>,
+    },
 }
 
 impl Display for Path<'_> {

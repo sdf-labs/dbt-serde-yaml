@@ -184,7 +184,7 @@ mod libyaml;
 mod loader;
 pub mod mapping;
 mod number;
-mod path;
+pub mod path;
 mod ser;
 pub mod spanned;
 pub mod value;
