@@ -1,3 +1,4 @@
+use crate::path::Path;
 use crate::value::de::{MapRefDeserializer, SeqRefDeserializer};
 use crate::value::Value;
 use crate::Error;
@@ -252,7 +253,8 @@ impl<'de> EnumAccess<'de> for TaggedValue {
     type Error = Error;
     type Variant = ValueDeserializer<
         'static,
-        fn(Value, Value),
+        'static,
+        fn(Path<'_>, Value, Value),
         fn(Value) -> Result<Value, Box<dyn std::error::Error + 'static + Send + Sync>>,
     >;
 

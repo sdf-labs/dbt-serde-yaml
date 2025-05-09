@@ -9,6 +9,7 @@ mod ser;
 pub(crate) mod tagged;
 
 use crate::error::{self, Error, ErrorImpl};
+use crate::path::Path;
 use crate::{spanned, Span};
 use serde::de::{Deserialize, DeserializeOwned, IntoDeserializer};
 use serde::Serialize;
@@ -834,7 +835,8 @@ impl Hash for Value {
 impl IntoDeserializer<'_, Error> for Value {
     type Deserializer = de::ValueDeserializer<
         'static,
-        fn(Value, Value),
+        'static,
+        fn(Path<'_>, Value, Value),
         fn(Value) -> Result<Value, Box<dyn std::error::Error + 'static + Send + Sync>>,
     >;
 
