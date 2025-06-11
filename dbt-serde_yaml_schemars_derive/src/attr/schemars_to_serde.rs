@@ -164,7 +164,7 @@ mod tests {
         };
 
         if let Err(e) = process_serde_attrs(&mut input) {
-            panic!("process_serde_attrs returned error: {}", e)
+            panic!("process_serde_attrs returned error: {e}")
         };
 
         assert_eq!(input, expected);

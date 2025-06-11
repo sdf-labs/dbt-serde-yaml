@@ -2,7 +2,8 @@
 
 use std::fmt::{self, Display};
 
-/// Path to the current value in the input, like `dependencies.serde.typo1`.
+/// A structured representation of a path to the current value in the input,
+/// like `dependencies.serde.typo1`.
 #[derive(Copy, Clone)]
 pub enum Path<'a> {
     /// The root of the input.
