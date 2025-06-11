@@ -259,7 +259,7 @@ fn test_schemars() {
 
     let schema = schema_for!(Point);
     let yaml = dbt_serde_yaml::to_string(&schema).unwrap();
-    println!("{}", yaml);
+    println!("{yaml}");
     assert_eq!(
         yaml,
         indoc! {"

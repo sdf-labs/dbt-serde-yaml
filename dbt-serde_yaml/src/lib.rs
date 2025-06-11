@@ -178,6 +178,9 @@ pub use crate::verbatim::Verbatim;
 #[doc(inline)]
 pub use crate::mapping::Mapping;
 
+#[doc(inline)]
+pub use crate::path::Path;
+
 mod de;
 mod error;
 mod libyaml;

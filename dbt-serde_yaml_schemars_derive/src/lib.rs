@@ -117,7 +117,7 @@ fn derive_json_schema(mut input: syn::DeriveInput, repr: bool) -> syn::Result<To
     } else if cont.attrs.is_renamed {
         let mut schema_name_fmt = schema_base_name;
         for tp in &params {
-            schema_name_fmt.push_str(&format!("{{{}:.0}}", tp));
+            schema_name_fmt.push_str(&format!("{{{tp}:.0}}"));
         }
         (
             quote! {

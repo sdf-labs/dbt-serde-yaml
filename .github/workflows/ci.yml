@@ -24,7 +24,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        rust: [nightly, beta, stable, 1.84.1]
+        rust: [nightly, beta, stable, 1.86]
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
@@ -45,6 +45,8 @@ jobs:
     runs-on: windows-latest
     strategy:
       fail-fast: false
+      matrix:
+        rust: [stable]
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
@@ -75,9 +77,7 @@ jobs:
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@master
-        with:
-          toolchain: stable
+      - uses: dtolnay/rust-toolchain@clippy
       - run: cargo clippy --tests -- -Dclippy::all
       - run: cargo clippy --tests --all-features -- -Dclippy::all
 

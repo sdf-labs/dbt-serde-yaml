@@ -179,7 +179,7 @@ impl Attrs {
                             .replace(' ', "");
                         errors.error_spanned_by(
                             meta_item.path(),
-                            format!("unknown schemars attribute `{}`", path),
+                            format!("unknown schemars attribute `{path}`"),
                         );
                     }
                 }
@@ -247,8 +247,7 @@ fn expr_as_lit_str<'a>(
         cx.error_spanned_by(
             expr,
             format!(
-                "expected {} {} attribute to be a string: `{} = \"...\"`",
-                attr_type, meta_item_name, meta_item_name
+                "expected {attr_type} {meta_item_name} attribute to be a string: `{meta_item_name} = \"...\"`"
             ),
         );
         Err(())
