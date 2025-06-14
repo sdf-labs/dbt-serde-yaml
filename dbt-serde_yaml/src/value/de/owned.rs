@@ -903,6 +903,7 @@ where
                 ),
                 visitor,
             ),
+            Some(value) => Err(Error::invalid_type(value.unexpected(), &"tuple variant")),
             _ => Err(Error::invalid_type(
                 Unexpected::UnitVariant,
                 &"tuple variant",
@@ -929,6 +930,7 @@ where
                 ),
                 visitor,
             ),
+            Some(value) => Err(Error::invalid_type(value.unexpected(), &"struct variant")),
             _ => Err(Error::invalid_type(
                 Unexpected::UnitVariant,
                 &"struct variant",
