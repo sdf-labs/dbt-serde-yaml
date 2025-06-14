@@ -1,21 +1,28 @@
-use std::slice;
+use std::{collections::HashSet, slice};
 
 use serde::{
     de::{
         value::BorrowedStrDeserializer, DeserializeSeed, EnumAccess, Error as _, MapAccess,
         SeqAccess, Unexpected, VariantAccess, Visitor,
     },
-    forward_to_deserialize_any, Deserializer,
+    forward_to_deserialize_any, Deserialize, Deserializer,
 };
 
-use crate::{error, value::tagged, Error, Mapping, Sequence, Value};
+use crate::{error, value::tagged, Error, Mapping, Path, Sequence, Value};
 
-fn visit_sequence_ref<'de, V>(sequence: &'de Sequence, visitor: V) -> Result<V::Value, Error>
+fn visit_sequence_ref<'p, 'u, 'de, V, U>(
+    sequence: &'de Sequence,
+    current_path: Path<'p>,
+    visitor: V,
+    unused_key_callback: Option<&'u mut U>,
+) -> Result<V::Value, Error>
 where
     V: Visitor<'de>,
+    U: for<'a> FnMut(Path<'a>, &'de Value, &'de Value),
 {
     let len = sequence.len();
-    let mut deserializer = SeqRefDeserializer::new(sequence);
+    let mut deserializer =
+        SeqRefDeserializer::new_with(sequence, current_path, unused_key_callback);
     let seq = visitor.visit_seq(&mut deserializer)?;
     let remaining = deserializer.iter.len();
     if remaining == 0 {
@@ -25,18 +32,48 @@ where
     }
 }
 
-fn visit_mapping_ref<'de, V>(mapping: &'de Mapping, visitor: V) -> Result<V::Value, Error>
+fn visit_mapping_ref<'p, 'u, 'de, V, U>(
+    mapping: &'de Mapping,
+    current_path: Path<'p>,
+    visitor: V,
+    unused_key_callback: Option<&'u mut U>,
+) -> Result<V::Value, Error>
 where
     V: Visitor<'de>,
+    U: for<'a> FnMut(Path<'a>, &'de Value, &'de Value),
 {
     let len = mapping.len();
-    let mut deserializer = MapRefDeserializer::new(mapping);
+    let mut deserializer = MapRefDeserializer::new_with(mapping, current_path, unused_key_callback);
     let map = visitor.visit_map(&mut deserializer)?;
-    let remaining = deserializer.iter.unwrap().len();
-    if remaining == 0 {
+    let has_remaining = deserializer.iter.unwrap().next().is_some();
+    if !has_remaining {
         Ok(map)
     } else {
         Err(Error::invalid_length(len, &"fewer elements in map"))
+    }
+}
+
+fn visit_struct_ref<'p, 'u, 'de, V, U>(
+    mapping: &'de Mapping,
+    current_path: Path<'p>,
+    visitor: V,
+    known_keys: &'static [&'static str],
+    unused_key_callback: Option<&'u mut U>,
+) -> Result<V::Value, Error>
+where
+    V: Visitor<'de>,
+    U: for<'a> FnMut(Path<'a>, &'de Value, &'de Value),
+{
+    let len = mapping.len();
+    let mut deserializer =
+        StructRefDeserializer::new_with(mapping, current_path, known_keys, unused_key_callback);
+    let map = visitor.visit_map(&mut deserializer)?;
+    let has_remaining =
+        deserializer.iter.unwrap().next().is_some() || !deserializer.rest.is_empty();
+    if !has_remaining {
+        Ok(map)
+    } else {
+        Err(Error::invalid_length(len, &"fewer elements in struct"))
     }
 }
 
@@ -47,126 +84,415 @@ impl<'de> Deserializer<'de> for &'de Value {
     where
         V: Visitor<'de>,
     {
-        match self {
-            Value::Null(..) => visitor.visit_unit(),
-            Value::Bool(v, ..) => visitor.visit_bool(*v),
-            Value::Number(n, ..) => n.deserialize_any(visitor),
-            Value::String(v, ..) => visitor.visit_borrowed_str(v),
-            Value::Sequence(v, ..) => visit_sequence_ref(v, visitor),
-            Value::Mapping(v, ..) => visit_mapping_ref(v, visitor),
-            Value::Tagged(tagged, ..) => visitor.visit_enum(&**tagged),
-        }
+        ValueRefDeserializer::new(self).deserialize_any(visitor)
     }
 
     fn deserialize_bool<V>(self, visitor: V) -> Result<V::Value, Error>
     where
         V: Visitor<'de>,
     {
-        match self.untag_ref() {
-            Value::Bool(v, ..) => visitor.visit_bool(*v),
-            other => Err(other.invalid_type(&visitor)),
-        }
+        ValueRefDeserializer::new(self).deserialize_bool(visitor)
     }
 
     fn deserialize_i8<V>(self, visitor: V) -> Result<V::Value, Error>
     where
         V: Visitor<'de>,
     {
-        self.deserialize_number(visitor)
+        ValueRefDeserializer::new(self).deserialize_i8(visitor)
     }
 
     fn deserialize_i16<V>(self, visitor: V) -> Result<V::Value, Error>
     where
         V: Visitor<'de>,
     {
-        self.deserialize_number(visitor)
+        ValueRefDeserializer::new(self).deserialize_i16(visitor)
     }
 
     fn deserialize_i32<V>(self, visitor: V) -> Result<V::Value, Error>
     where
         V: Visitor<'de>,
     {
-        self.deserialize_number(visitor)
+        ValueRefDeserializer::new(self).deserialize_i32(visitor)
     }
 
     fn deserialize_i64<V>(self, visitor: V) -> Result<V::Value, Error>
     where
         V: Visitor<'de>,
     {
-        self.deserialize_number(visitor)
+        ValueRefDeserializer::new(self).deserialize_i64(visitor)
     }
 
     fn deserialize_i128<V>(self, visitor: V) -> Result<V::Value, Error>
     where
         V: Visitor<'de>,
     {
-        self.deserialize_number(visitor)
+        ValueRefDeserializer::new(self).deserialize_i128(visitor)
     }
 
     fn deserialize_u8<V>(self, visitor: V) -> Result<V::Value, Error>
     where
         V: Visitor<'de>,
     {
-        self.deserialize_number(visitor)
+        ValueRefDeserializer::new(self).deserialize_u8(visitor)
     }
 
     fn deserialize_u16<V>(self, visitor: V) -> Result<V::Value, Error>
     where
         V: Visitor<'de>,
     {
-        self.deserialize_number(visitor)
+        ValueRefDeserializer::new(self).deserialize_u16(visitor)
     }
 
     fn deserialize_u32<V>(self, visitor: V) -> Result<V::Value, Error>
     where
         V: Visitor<'de>,
     {
-        self.deserialize_number(visitor)
+        ValueRefDeserializer::new(self).deserialize_u32(visitor)
     }
 
     fn deserialize_u64<V>(self, visitor: V) -> Result<V::Value, Error>
     where
         V: Visitor<'de>,
     {
-        self.deserialize_number(visitor)
+        ValueRefDeserializer::new(self).deserialize_u64(visitor)
     }
 
     fn deserialize_u128<V>(self, visitor: V) -> Result<V::Value, Error>
     where
         V: Visitor<'de>,
     {
-        self.deserialize_number(visitor)
+        ValueRefDeserializer::new(self).deserialize_u128(visitor)
     }
 
     fn deserialize_f32<V>(self, visitor: V) -> Result<V::Value, Error>
     where
         V: Visitor<'de>,
     {
-        self.deserialize_number(visitor)
+        ValueRefDeserializer::new(self).deserialize_f32(visitor)
     }
 
     fn deserialize_f64<V>(self, visitor: V) -> Result<V::Value, Error>
     where
         V: Visitor<'de>,
     {
-        self.deserialize_number(visitor)
+        ValueRefDeserializer::new(self).deserialize_f64(visitor)
     }
 
     fn deserialize_char<V>(self, visitor: V) -> Result<V::Value, Error>
     where
         V: Visitor<'de>,
     {
-        self.deserialize_string(visitor)
+        ValueRefDeserializer::new(self).deserialize_char(visitor)
     }
 
     fn deserialize_str<V>(self, visitor: V) -> Result<V::Value, Error>
     where
         V: Visitor<'de>,
     {
-        match self.untag_ref() {
+        ValueRefDeserializer::new(self).deserialize_str(visitor)
+    }
+
+    fn deserialize_string<V>(self, visitor: V) -> Result<V::Value, Error>
+    where
+        V: Visitor<'de>,
+    {
+        ValueRefDeserializer::new(self).deserialize_string(visitor)
+    }
+
+    fn deserialize_bytes<V>(self, visitor: V) -> Result<V::Value, Error>
+    where
+        V: Visitor<'de>,
+    {
+        ValueRefDeserializer::new(self).deserialize_bytes(visitor)
+    }
+
+    fn deserialize_byte_buf<V>(self, visitor: V) -> Result<V::Value, Error>
+    where
+        V: Visitor<'de>,
+    {
+        ValueRefDeserializer::new(self).deserialize_byte_buf(visitor)
+    }
+
+    fn deserialize_option<V>(self, visitor: V) -> Result<V::Value, Error>
+    where
+        V: Visitor<'de>,
+    {
+        ValueRefDeserializer::new(self).deserialize_option(visitor)
+    }
+
+    fn deserialize_unit<V>(self, visitor: V) -> Result<V::Value, Error>
+    where
+        V: Visitor<'de>,
+    {
+        ValueRefDeserializer::new(self).deserialize_unit(visitor)
+    }
+
+    fn deserialize_unit_struct<V>(self, name: &'static str, visitor: V) -> Result<V::Value, Error>
+    where
+        V: Visitor<'de>,
+    {
+        ValueRefDeserializer::new(self).deserialize_unit_struct(name, visitor)
+    }
+
+    fn deserialize_newtype_struct<V>(
+        self,
+        name: &'static str,
+        visitor: V,
+    ) -> Result<V::Value, Error>
+    where
+        V: Visitor<'de>,
+    {
+        ValueRefDeserializer::new(self).deserialize_newtype_struct(name, visitor)
+    }
+
+    fn deserialize_seq<V>(self, visitor: V) -> Result<V::Value, Error>
+    where
+        V: Visitor<'de>,
+    {
+        ValueRefDeserializer::new(self).deserialize_seq(visitor)
+    }
+
+    fn deserialize_tuple<V>(self, _len: usize, visitor: V) -> Result<V::Value, Error>
+    where
+        V: Visitor<'de>,
+    {
+        ValueRefDeserializer::new(self).deserialize_tuple(_len, visitor)
+    }
+
+    fn deserialize_tuple_struct<V>(
+        self,
+        name: &'static str,
+        len: usize,
+        visitor: V,
+    ) -> Result<V::Value, Error>
+    where
+        V: Visitor<'de>,
+    {
+        ValueRefDeserializer::new(self).deserialize_tuple_struct(name, len, visitor)
+    }
+
+    fn deserialize_map<V>(self, visitor: V) -> Result<V::Value, Error>
+    where
+        V: Visitor<'de>,
+    {
+        ValueRefDeserializer::new(self).deserialize_map(visitor)
+    }
+
+    fn deserialize_struct<V>(
+        self,
+        name: &'static str,
+        fields: &'static [&'static str],
+        visitor: V,
+    ) -> Result<V::Value, Error>
+    where
+        V: Visitor<'de>,
+    {
+        ValueRefDeserializer::new(self).deserialize_struct(name, fields, visitor)
+    }
+
+    fn deserialize_enum<V>(
+        self,
+        name: &'static str,
+        variants: &'static [&'static str],
+        visitor: V,
+    ) -> Result<V::Value, Error>
+    where
+        V: Visitor<'de>,
+    {
+        ValueRefDeserializer::new(self).deserialize_enum(name, variants, visitor)
+    }
+
+    fn deserialize_identifier<V>(self, visitor: V) -> Result<V::Value, Error>
+    where
+        V: Visitor<'de>,
+    {
+        ValueRefDeserializer::new(self).deserialize_identifier(visitor)
+    }
+
+    fn deserialize_ignored_any<V>(self, visitor: V) -> Result<V::Value, Error>
+    where
+        V: Visitor<'de>,
+    {
+        ValueRefDeserializer::new(self).deserialize_ignored_any(visitor)
+    }
+}
+
+pub struct ValueRefDeserializer<'p, 'u, 'de, U> {
+    value: &'de Value,
+    path: Path<'p>,
+    unused_key_callback: Option<&'u mut U>,
+}
+
+impl<'p, 'de> ValueRefDeserializer<'p, '_, 'de, fn(Path<'_>, &Value, &Value)> {
+    pub(crate) fn new(value: &'de Value) -> Self {
+        ValueRefDeserializer {
+            value,
+            path: Path::Root,
+            unused_key_callback: None,
+        }
+    }
+}
+
+impl<'p, 'u, 'de, U> ValueRefDeserializer<'p, 'u, 'de, U>
+where
+    U: for<'a> FnMut(Path<'a>, &'de Value, &'de Value),
+{
+    pub(crate) fn new_with(
+        value: &'de Value,
+        path: Path<'p>,
+        unused_key_callback: Option<&'u mut U>,
+    ) -> Self {
+        ValueRefDeserializer {
+            value,
+            path,
+            unused_key_callback,
+        }
+    }
+}
+
+impl<'de, U> Deserializer<'de> for ValueRefDeserializer<'_, '_, 'de, U>
+where
+    U: for<'a> FnMut(Path<'a>, &'de Value, &'de Value),
+{
+    type Error = Error;
+
+    fn deserialize_any<V>(self, visitor: V) -> Result<V::Value, Error>
+    where
+        V: Visitor<'de>,
+    {
+        let span = self.value.span();
+        self.value.broadcast_end_mark();
+        match self.value {
+            Value::Null(..) => visitor.visit_unit(),
+            Value::Bool(v, ..) => visitor.visit_bool(*v),
+            Value::Number(n, ..) => n.deserialize_any(visitor),
+            Value::String(v, ..) => visitor.visit_borrowed_str(v),
+            Value::Sequence(v, ..) => {
+                visit_sequence_ref(v, self.path, visitor, self.unused_key_callback)
+            }
+            Value::Mapping(v, ..) => {
+                visit_mapping_ref(v, self.path, visitor, self.unused_key_callback)
+            }
+            Value::Tagged(tagged, ..) => visitor.visit_enum(&**tagged),
+        }
+        .map_err(|e| error::set_span(e, span))
+    }
+
+    fn deserialize_bool<V>(self, visitor: V) -> Result<V::Value, Error>
+    where
+        V: Visitor<'de>,
+    {
+        let span = self.value.span();
+        self.value.broadcast_end_mark();
+        match self.value.untag_ref() {
+            Value::Bool(v, ..) => visitor.visit_bool(*v),
+            other => Err(other.invalid_type(&visitor)),
+        }
+        .map_err(|e| error::set_span(e, span))
+    }
+
+    fn deserialize_i8<V>(self, visitor: V) -> Result<V::Value, Error>
+    where
+        V: Visitor<'de>,
+    {
+        self.value.deserialize_number(visitor)
+    }
+
+    fn deserialize_i16<V>(self, visitor: V) -> Result<V::Value, Error>
+    where
+        V: Visitor<'de>,
+    {
+        self.value.deserialize_number(visitor)
+    }
+
+    fn deserialize_i32<V>(self, visitor: V) -> Result<V::Value, Error>
+    where
+        V: Visitor<'de>,
+    {
+        self.value.deserialize_number(visitor)
+    }
+
+    fn deserialize_i64<V>(self, visitor: V) -> Result<V::Value, Error>
+    where
+        V: Visitor<'de>,
+    {
+        self.value.deserialize_number(visitor)
+    }
+
+    fn deserialize_i128<V>(self, visitor: V) -> Result<V::Value, Error>
+    where
+        V: Visitor<'de>,
+    {
+        self.value.deserialize_number(visitor)
+    }
+
+    fn deserialize_u8<V>(self, visitor: V) -> Result<V::Value, Error>
+    where
+        V: Visitor<'de>,
+    {
+        self.value.deserialize_number(visitor)
+    }
+
+    fn deserialize_u16<V>(self, visitor: V) -> Result<V::Value, Error>
+    where
+        V: Visitor<'de>,
+    {
+        self.value.deserialize_number(visitor)
+    }
+
+    fn deserialize_u32<V>(self, visitor: V) -> Result<V::Value, Error>
+    where
+        V: Visitor<'de>,
+    {
+        self.value.deserialize_number(visitor)
+    }
+
+    fn deserialize_u64<V>(self, visitor: V) -> Result<V::Value, Error>
+    where
+        V: Visitor<'de>,
+    {
+        self.value.deserialize_number(visitor)
+    }
+
+    fn deserialize_u128<V>(self, visitor: V) -> Result<V::Value, Error>
+    where
+        V: Visitor<'de>,
+    {
+        self.value.deserialize_number(visitor)
+    }
+
+    fn deserialize_f32<V>(self, visitor: V) -> Result<V::Value, Error>
+    where
+        V: Visitor<'de>,
+    {
+        self.value.deserialize_number(visitor)
+    }
+
+    fn deserialize_f64<V>(self, visitor: V) -> Result<V::Value, Error>
+    where
+        V: Visitor<'de>,
+    {
+        self.value.deserialize_number(visitor)
+    }
+
+    fn deserialize_char<V>(self, visitor: V) -> Result<V::Value, Error>
+    where
+        V: Visitor<'de>,
+    {
+        self.deserialize_str(visitor)
+    }
+
+    fn deserialize_str<V>(self, visitor: V) -> Result<V::Value, Error>
+    where
+        V: Visitor<'de>,
+    {
+        let span = self.value.span();
+        self.value.broadcast_end_mark();
+        match self.value.untag_ref() {
             Value::String(v, ..) => visitor.visit_borrowed_str(v),
             other => Err(other.invalid_type(&visitor)),
         }
+        .map_err(|e| error::set_span(e, span))
     }
 
     fn deserialize_string<V>(self, visitor: V) -> Result<V::Value, Error>
@@ -180,11 +506,16 @@ impl<'de> Deserializer<'de> for &'de Value {
     where
         V: Visitor<'de>,
     {
-        match self.untag_ref() {
+        let span = self.value.span();
+        self.value.broadcast_end_mark();
+        match self.value.untag_ref() {
             Value::String(v, ..) => visitor.visit_borrowed_str(v),
-            Value::Sequence(v, ..) => visit_sequence_ref(v, visitor),
+            Value::Sequence(v, ..) => {
+                visit_sequence_ref(v, self.path, visitor, self.unused_key_callback)
+            }
             other => Err(other.invalid_type(&visitor)),
         }
+        .map_err(|e| error::set_span(e, span))
     }
 
     fn deserialize_byte_buf<V>(self, visitor: V) -> Result<V::Value, Error>
@@ -198,20 +529,26 @@ impl<'de> Deserializer<'de> for &'de Value {
     where
         V: Visitor<'de>,
     {
-        match self {
+        let span = self.value.span();
+        self.value.broadcast_end_mark();
+        match self.value {
             Value::Null(..) => visitor.visit_unit(),
             _ => visitor.visit_some(self),
         }
+        .map_err(|e| error::set_span(e, span))
     }
 
     fn deserialize_unit<V>(self, visitor: V) -> Result<V::Value, Error>
     where
         V: Visitor<'de>,
     {
-        match self {
+        let span = self.value.span();
+        self.value.broadcast_end_mark();
+        match self.value {
             Value::Null(..) => visitor.visit_unit(),
-            _ => Err(self.invalid_type(&visitor)),
+            _ => Err(self.value.invalid_type(&visitor)),
         }
+        .map_err(|e| error::set_span(e, span))
     }
 
     fn deserialize_unit_struct<V>(self, _name: &'static str, visitor: V) -> Result<V::Value, Error>
@@ -229,7 +566,11 @@ impl<'de> Deserializer<'de> for &'de Value {
     where
         V: Visitor<'de>,
     {
-        visitor.visit_newtype_struct(self)
+        let span = self.value.span();
+        self.value.broadcast_end_mark();
+        visitor
+            .visit_newtype_struct(self)
+            .map_err(|e| error::set_span(e, span))
     }
 
     fn deserialize_seq<V>(self, visitor: V) -> Result<V::Value, Error>
@@ -237,11 +578,18 @@ impl<'de> Deserializer<'de> for &'de Value {
         V: Visitor<'de>,
     {
         static EMPTY: Sequence = Sequence::new();
-        match self.untag_ref() {
-            Value::Sequence(v, ..) => visit_sequence_ref(v, visitor),
-            Value::Null(..) => visit_sequence_ref(&EMPTY, visitor),
+        let span = self.value.span();
+        self.value.broadcast_end_mark();
+        match self.value.untag_ref() {
+            Value::Sequence(v, ..) => {
+                visit_sequence_ref(v, self.path, visitor, self.unused_key_callback)
+            }
+            Value::Null(..) => {
+                visit_sequence_ref(&EMPTY, self.path, visitor, self.unused_key_callback)
+            }
             other => Err(other.invalid_type(&visitor)),
         }
+        .map_err(|e| error::set_span(e, span))
     }
 
     fn deserialize_tuple<V>(self, _len: usize, visitor: V) -> Result<V::Value, Error>
@@ -267,26 +615,37 @@ impl<'de> Deserializer<'de> for &'de Value {
     where
         V: Visitor<'de>,
     {
-        match self.untag_ref() {
-            Value::Mapping(v, ..) => visit_mapping_ref(v, visitor),
-            Value::Null(..) => visitor.visit_map(&mut MapRefDeserializer {
-                iter: None,
-                value: None,
-            }),
+        let span = self.value.span();
+        self.value.broadcast_end_mark();
+        match self.value.untag_ref() {
+            Value::Mapping(v, ..) => {
+                visit_mapping_ref(v, self.path, visitor, self.unused_key_callback)
+            }
+            Value::Null(..) => visitor.visit_map(&mut MapRefDeserializer::new_empty(self.path)),
             other => Err(other.invalid_type(&visitor)),
         }
+        .map_err(|e| error::set_span(e, span))
     }
 
     fn deserialize_struct<V>(
         self,
         _name: &'static str,
-        _fields: &'static [&'static str],
+        fields: &'static [&'static str],
         visitor: V,
     ) -> Result<V::Value, Error>
     where
         V: Visitor<'de>,
     {
-        self.deserialize_map(visitor)
+        let span = self.value.span();
+        self.value.broadcast_end_mark();
+        match self.value.untag_ref() {
+            Value::Mapping(v, ..) => {
+                visit_struct_ref(v, self.path, visitor, fields, self.unused_key_callback)
+            }
+            Value::Null(..) => visitor.visit_map(&mut MapRefDeserializer::new_empty(self.path)),
+            other => Err(other.invalid_type(&visitor)),
+        }
+        .map_err(|e| error::set_span(e, span))
     }
 
     fn deserialize_enum<V>(
@@ -298,22 +657,31 @@ impl<'de> Deserializer<'de> for &'de Value {
     where
         V: Visitor<'de>,
     {
-        visitor.visit_enum(match self {
-            Value::Tagged(tagged, ..) => EnumRefDeserializer {
-                tag: tagged::nobang(&tagged.tag.string),
-                value: Some(&tagged.value),
-            },
-            Value::String(variant, ..) => EnumRefDeserializer {
-                tag: variant,
-                value: None,
-            },
-            other => {
-                return Err(error::set_span(
-                    Error::invalid_type(other.unexpected(), &"a Value::Tagged enum"),
-                    self.span(),
-                ));
-            }
-        })
+        let span = self.value.span();
+        self.value.broadcast_end_mark();
+
+        visitor
+            .visit_enum(match self.value {
+                Value::Tagged(tagged, ..) => EnumRefDeserializer {
+                    tag: tagged::nobang(&tagged.tag.string),
+                    path: self.path,
+                    value: Some(&tagged.value),
+                    unused_key_callback: self.unused_key_callback,
+                },
+                Value::String(variant, ..) => EnumRefDeserializer {
+                    tag: variant,
+                    path: self.path,
+                    value: None,
+                    unused_key_callback: self.unused_key_callback,
+                },
+                other => {
+                    return Err(error::set_span(
+                        Error::invalid_type(other.unexpected(), &"a Value::Tagged enum"),
+                        span,
+                    ));
+                }
+            })
+            .map_err(|e| error::set_span(e, span))
     }
 
     fn deserialize_identifier<V>(self, visitor: V) -> Result<V::Value, Error>
@@ -327,18 +695,25 @@ impl<'de> Deserializer<'de> for &'de Value {
     where
         V: Visitor<'de>,
     {
-        visitor.visit_unit()
+        let span = self.value.span();
+        self.value.broadcast_end_mark();
+        visitor.visit_unit().map_err(|e| error::set_span(e, span))
     }
 }
 
-struct EnumRefDeserializer<'de> {
+struct EnumRefDeserializer<'p, 'u, 'de, U> {
     tag: &'de str,
+    path: Path<'p>,
     value: Option<&'de Value>,
+    unused_key_callback: Option<&'u mut U>,
 }
 
-impl<'de> EnumAccess<'de> for EnumRefDeserializer<'de> {
+impl<'p, 'u, 'de, U> EnumAccess<'de> for EnumRefDeserializer<'p, 'u, 'de, U>
+where
+    U: for<'a> FnMut(Path<'a>, &'de Value, &'de Value),
+{
     type Error = Error;
-    type Variant = VariantRefDeserializer<'de>;
+    type Variant = VariantRefDeserializer<'p, 'u, 'de, U>;
 
     fn variant_seed<V>(self, seed: V) -> Result<(V::Value, Self::Variant), Error>
     where
@@ -346,16 +721,25 @@ impl<'de> EnumAccess<'de> for EnumRefDeserializer<'de> {
     {
         let str_de = BorrowedStrDeserializer::<Error>::new(self.tag);
         let variant = seed.deserialize(str_de)?;
-        let visitor = VariantRefDeserializer { value: self.value };
+        let visitor = VariantRefDeserializer {
+            value: self.value,
+            path: self.path,
+            unused_key_callback: self.unused_key_callback,
+        };
         Ok((variant, visitor))
     }
 }
 
-struct VariantRefDeserializer<'de> {
+struct VariantRefDeserializer<'p, 'u, 'de, U> {
     value: Option<&'de Value>,
+    path: Path<'p>,
+    unused_key_callback: Option<&'u mut U>,
 }
 
-impl<'de> VariantAccess<'de> for VariantRefDeserializer<'de> {
+impl<'de, U> VariantAccess<'de> for VariantRefDeserializer<'_, '_, 'de, U>
+where
+    U: for<'a> FnMut(Path<'a>, &'de Value, &'de Value),
+{
     type Error = Error;
 
     fn unit_variant(self) -> Result<(), Error> {
@@ -370,7 +754,11 @@ impl<'de> VariantAccess<'de> for VariantRefDeserializer<'de> {
         T: DeserializeSeed<'de>,
     {
         match self.value {
-            Some(value) => value.newtype_variant_seed(seed),
+            Some(value) => seed.deserialize(ValueRefDeserializer::new_with(
+                value,
+                self.path,
+                self.unused_key_callback,
+            )),
             None => Err(Error::invalid_type(
                 Unexpected::UnitVariant,
                 &"newtype variant",
@@ -378,13 +766,17 @@ impl<'de> VariantAccess<'de> for VariantRefDeserializer<'de> {
         }
     }
 
-    fn tuple_variant<V>(self, len: usize, visitor: V) -> Result<V::Value, Error>
+    fn tuple_variant<V>(self, _len: usize, visitor: V) -> Result<V::Value, Error>
     where
         V: Visitor<'de>,
     {
         match self.value {
-            Some(value) => value.tuple_variant(len, visitor),
-            None => Err(Error::invalid_type(
+            Some(Value::Sequence(v, ..)) => Deserializer::deserialize_any(
+                SeqRefDeserializer::new_with(v, self.path, self.unused_key_callback),
+                visitor,
+            ),
+            Some(value) => Err(Error::invalid_type(value.unexpected(), &"tuple variant")),
+            _ => Err(Error::invalid_type(
                 Unexpected::UnitVariant,
                 &"tuple variant",
             )),
@@ -400,7 +792,11 @@ impl<'de> VariantAccess<'de> for VariantRefDeserializer<'de> {
         V: Visitor<'de>,
     {
         match self.value {
-            Some(value) => value.struct_variant(fields, visitor),
+            Some(Value::Mapping(v, ..)) => Deserializer::deserialize_any(
+                StructRefDeserializer::new_with(v, self.path, fields, self.unused_key_callback),
+                visitor,
+            ),
+            Some(value) => Err(Error::invalid_type(value.unexpected(), &"struct variant")),
             None => Err(Error::invalid_type(
                 Unexpected::UnitVariant,
                 &"struct variant",
@@ -409,17 +805,99 @@ impl<'de> VariantAccess<'de> for VariantRefDeserializer<'de> {
     }
 }
 
-pub(crate) struct SeqRefDeserializer<'de> {
-    iter: slice::Iter<'de, Value>,
-}
+impl<'de, U> VariantAccess<'de> for ValueRefDeserializer<'_, '_, 'de, U>
+where
+    U: for<'a> FnMut(Path<'a>, &'de Value, &'de Value),
+{
+    type Error = Error;
 
-impl<'de> SeqRefDeserializer<'de> {
-    pub(crate) fn new(slice: &'de [Value]) -> Self {
-        SeqRefDeserializer { iter: slice.iter() }
+    fn unit_variant(self) -> Result<(), Error> {
+        Deserialize::deserialize(self)
+    }
+
+    fn newtype_variant_seed<T>(self, seed: T) -> Result<T::Value, Error>
+    where
+        T: DeserializeSeed<'de>,
+    {
+        seed.deserialize(self)
+    }
+
+    fn tuple_variant<V>(self, _len: usize, visitor: V) -> Result<V::Value, Error>
+    where
+        V: Visitor<'de>,
+    {
+        if let Value::Sequence(v, ..) = self.value {
+            Deserializer::deserialize_any(
+                SeqRefDeserializer::new_with(v, self.path, self.unused_key_callback),
+                visitor,
+            )
+        } else {
+            Err(Error::invalid_type(
+                self.value.unexpected(),
+                &"tuple variant",
+            ))
+        }
+    }
+
+    fn struct_variant<V>(
+        self,
+        fields: &'static [&'static str],
+        visitor: V,
+    ) -> Result<V::Value, Error>
+    where
+        V: Visitor<'de>,
+    {
+        if let Value::Mapping(v, ..) = self.value {
+            Deserializer::deserialize_any(
+                StructRefDeserializer::new_with(v, self.path, fields, self.unused_key_callback),
+                visitor,
+            )
+        } else {
+            Err(Error::invalid_type(
+                self.value.unexpected(),
+                &"struct variant",
+            ))
+        }
     }
 }
 
-impl<'de> Deserializer<'de> for SeqRefDeserializer<'de> {
+pub(crate) struct SeqRefDeserializer<'p, 'u, 'de, U> {
+    iter: slice::Iter<'de, Value>,
+    path: Path<'p>,
+    current_idx: usize,
+    unused_key_callback: Option<&'u mut U>,
+}
+
+impl<'p, 'u, 'de> SeqRefDeserializer<'p, 'u, 'de, fn(Path<'_>, &Value, &Value)> {
+    pub(crate) fn new(slice: &'de [Value]) -> Self {
+        SeqRefDeserializer {
+            iter: slice.iter(),
+            path: Path::Root,
+            current_idx: 0,
+            unused_key_callback: None,
+        }
+    }
+}
+
+impl<'p, 'u, 'de, U> SeqRefDeserializer<'p, 'u, 'de, U> {
+    pub(crate) fn new_with(
+        slice: &'de [Value],
+        current_path: Path<'p>,
+        unused_key_callback: Option<&'u mut U>,
+    ) -> Self {
+        SeqRefDeserializer {
+            iter: slice.iter(),
+            path: current_path,
+            current_idx: 0,
+            unused_key_callback,
+        }
+    }
+}
+
+impl<'de, U> Deserializer<'de> for SeqRefDeserializer<'_, '_, 'de, U>
+where
+    U: for<'a> FnMut(Path<'a>, &'de Value, &'de Value),
+{
     type Error = Error;
 
     #[inline]
@@ -455,15 +933,29 @@ impl<'de> Deserializer<'de> for SeqRefDeserializer<'de> {
     }
 }
 
-impl<'de> SeqAccess<'de> for SeqRefDeserializer<'de> {
+impl<'de, U> SeqAccess<'de> for SeqRefDeserializer<'_, '_, 'de, U>
+where
+    U: for<'a> FnMut(Path<'a>, &'de Value, &'de Value),
+{
     type Error = Error;
 
     fn next_element_seed<T>(&mut self, seed: T) -> Result<Option<T::Value>, Error>
     where
         T: DeserializeSeed<'de>,
     {
+        self.current_idx += 1;
         match self.iter.next() {
-            Some(value) => seed.deserialize(value).map(Some),
+            Some(value) => {
+                let deserializer = ValueRefDeserializer::new_with(
+                    value,
+                    Path::Seq {
+                        parent: &self.path,
+                        index: self.current_idx - 1,
+                    },
+                    self.unused_key_callback.as_deref_mut(),
+                );
+                seed.deserialize(deserializer).map(Some)
+            }
             None => Ok(None),
         }
     }
@@ -476,30 +968,70 @@ impl<'de> SeqAccess<'de> for SeqRefDeserializer<'de> {
     }
 }
 
-pub(crate) struct MapRefDeserializer<'de> {
-    iter: Option<<&'de Mapping as IntoIterator>::IntoIter>,
+pub(crate) struct MapRefDeserializer<'p, 'u, 'de, U> {
+    iter: Option<Box<dyn Iterator<Item = (&'de Value, &'de Value)> + 'de>>,
+    current_key: Option<String>,
+    path: Path<'p>,
     value: Option<&'de Value>,
+    unused_key_callback: Option<&'u mut U>,
 }
 
-impl<'de> MapRefDeserializer<'de> {
+impl<'p, 'u, 'de> MapRefDeserializer<'p, 'u, 'de, fn(Path<'_>, &Value, &Value)> {
     pub(crate) fn new(map: &'de Mapping) -> Self {
         MapRefDeserializer {
-            iter: Some(map.iter()),
+            iter: Some(Box::new(map.iter())),
+            current_key: None,
+            path: Path::Root,
             value: None,
+            unused_key_callback: None,
+        }
+    }
+
+    pub(crate) fn new_empty(path: Path<'p>) -> Self {
+        MapRefDeserializer {
+            iter: None,
+            current_key: None,
+            path,
+            value: None,
+            unused_key_callback: None,
         }
     }
 }
 
-impl<'de> MapAccess<'de> for MapRefDeserializer<'de> {
+impl<'p, 'u, 'de, U> MapRefDeserializer<'p, 'u, 'de, U>
+where
+    U: for<'a> FnMut(Path<'a>, &'de Value, &'de Value),
+{
+    pub(crate) fn new_with(
+        map: &'de Mapping,
+        path: Path<'p>,
+        unused_key_callback: Option<&'u mut U>,
+    ) -> Self {
+        MapRefDeserializer {
+            iter: Some(Box::new(map.iter())),
+            current_key: None,
+            path,
+            value: None,
+            unused_key_callback,
+        }
+    }
+}
+
+impl<'de, U> MapAccess<'de> for MapRefDeserializer<'_, '_, 'de, U>
+where
+    U: for<'a> FnMut(Path<'a>, &'de Value, &'de Value),
+{
     type Error = Error;
 
     fn next_key_seed<T>(&mut self, seed: T) -> Result<Option<T::Value>, Error>
     where
         T: DeserializeSeed<'de>,
     {
+        self.current_key = None;
         match self.iter.as_mut().and_then(Iterator::next) {
             Some((key, value)) => {
                 self.value = Some(value);
+                self.current_key = key.as_str().map(String::from);
                 seed.deserialize(key).map(Some)
             }
             None => Ok(None),
@@ -511,7 +1043,17 @@ impl<'de> MapAccess<'de> for MapRefDeserializer<'de> {
         T: DeserializeSeed<'de>,
     {
         match self.value.take() {
-            Some(value) => seed.deserialize(value),
+            Some(value) => seed.deserialize(ValueRefDeserializer::new_with(
+                value,
+                match self.current_key {
+                    Some(ref key) => Path::Map {
+                        parent: &self.path,
+                        key,
+                    },
+                    None => Path::Unknown { parent: &self.path },
+                },
+                self.unused_key_callback.as_deref_mut(),
+            )),
             None => panic!("visit_value called before visit_key"),
         }
     }
@@ -524,7 +1066,217 @@ impl<'de> MapAccess<'de> for MapRefDeserializer<'de> {
     }
 }
 
-impl<'de> Deserializer<'de> for MapRefDeserializer<'de> {
+impl<'p, 'de, U> Deserializer<'de> for MapRefDeserializer<'p, '_, 'de, U>
+where
+    U: for<'a> FnMut(Path<'a>, &'de Value, &'de Value),
+{
+    type Error = Error;
+
+    #[inline]
+    fn deserialize_any<V>(self, visitor: V) -> Result<V::Value, Error>
+    where
+        V: Visitor<'de>,
+    {
+        visitor.visit_map(self)
+    }
+
+    fn deserialize_struct<V>(
+        self,
+        _name: &'static str,
+        fields: &'static [&'static str],
+        visitor: V,
+    ) -> Result<V::Value, Error>
+    where
+        V: Visitor<'de>,
+    {
+        let (normal_keys, flatten_keys): (Vec<_>, Vec<_>) = fields
+            .iter()
+            .copied()
+            .partition(|key| !crate::is_flatten_key(key.as_bytes()));
+        visitor.visit_map(StructRefDeserializer {
+            iter: self.iter,
+            current_key: None,
+            path: self.path,
+            value: None,
+            normal_keys: normal_keys.into_iter().collect(),
+            flatten_keys,
+            unused_key_callback: self.unused_key_callback,
+            rest: Vec::new(),
+            flatten_keys_done: 0,
+        })
+    }
+
+    fn deserialize_ignored_any<V>(self, visitor: V) -> Result<V::Value, Error>
+    where
+        V: Visitor<'de>,
+    {
+        visitor.visit_unit()
+    }
+
+    forward_to_deserialize_any! {
+        bool i8 i16 i32 i64 u8 u16 u32 u64 f32 f64 char str string bytes
+        byte_buf option unit unit_struct newtype_struct seq tuple tuple_struct
+        map enum identifier
+    }
+}
+
+pub(crate) struct StructRefDeserializer<'p, 'u, 'de, U> {
+    iter: Option<Box<dyn Iterator<Item = (&'de Value, &'de Value)> + 'de>>,
+    current_key: Option<String>,
+    path: Path<'p>,
+    value: Option<&'de Value>,
+    normal_keys: HashSet<&'static str>,
+    flatten_keys: Vec<&'static str>,
+    unused_key_callback: Option<&'u mut U>,
+    rest: Vec<(&'de Value, &'de Value)>,
+    flatten_keys_done: usize,
+}
+
+impl<'p, 'u, 'de, U> StructRefDeserializer<'p, 'u, 'de, U>
+where
+    U: for<'a> FnMut(Path<'a>, &'de Value, &'de Value),
+{
+    pub(crate) fn new_with(
+        map: &'de Mapping,
+        current_path: Path<'p>,
+        known_keys: &'static [&'static str],
+        unused_key_callback: Option<&'u mut U>,
+    ) -> Self {
+        let (normal_keys, flatten_keys): (Vec<_>, Vec<_>) = known_keys
+            .iter()
+            .copied()
+            .partition(|key| !crate::is_flatten_key(key.as_bytes()));
+        StructRefDeserializer {
+            iter: Some(Box::new(map.iter())),
+            current_key: None,
+            path: current_path,
+            value: None,
+            normal_keys: normal_keys.into_iter().collect(),
+            flatten_keys,
+            unused_key_callback,
+            rest: Vec::new(),
+            flatten_keys_done: 0,
+        }
+    }
+
+    pub(crate) fn has_flatten(&self) -> bool {
+        !self.flatten_keys.is_empty()
+    }
+
+    fn has_unprocessed_flatten_keys(&self) -> bool {
+        self.flatten_keys_done < self.flatten_keys.len()
+    }
+}
+
+impl<'p, 'de, U> MapAccess<'de> for StructRefDeserializer<'p, '_, 'de, U>
+where
+    U: for<'a> FnMut(Path<'a>, &'de Value, &'de Value),
+{
+    type Error = Error;
+
+    fn next_key_seed<T>(&mut self, seed: T) -> Result<Option<T::Value>, Error>
+    where
+        T: DeserializeSeed<'de>,
+    {
+        self.current_key = None;
+        loop {
+            match self.iter.as_mut().and_then(Iterator::next) {
+                Some((key, value)) => {
+                    match key.as_str() {
+                        Some(key_str) if crate::is_flatten_key(key_str.as_bytes()) => {
+                            self.rest.push((key, value));
+                            continue;
+                        }
+                        Some(key_str) if !self.normal_keys.contains(key_str) => {
+                            if self.has_flatten() {
+                                self.rest.push((key, value));
+                                continue;
+                            } else if let Some(callback) = &mut self.unused_key_callback {
+                                value.broadcast_end_mark();
+                                let key_string = key_str.to_string();
+                                let path = Path::Map {
+                                    parent: &self.path,
+                                    key: &key_string,
+                                };
+                                callback(path, key, value);
+                                continue;
+                            }
+                        }
+                        _ => {}
+                    };
+
+                    self.current_key = key.as_str().map(|s| s.to_string());
+                    self.value = Some(value);
+                    break seed.deserialize(ValueRefDeserializer::new(key)).map(Some);
+                }
+                None if self.has_unprocessed_flatten_keys() => {
+                    let key = self.flatten_keys[self.flatten_keys_done];
+                    self.current_key = Some(key.to_string());
+                    break seed
+                        .deserialize(super::ValueDeserializer::new(key.into()))
+                        .map(Some);
+                }
+                None => break Ok(None),
+            }
+        }
+    }
+
+    fn next_value_seed<T>(&mut self, seed: T) -> Result<T::Value, Error>
+    where
+        T: DeserializeSeed<'de>,
+    {
+        match self.value.take() {
+            Some(value) => seed.deserialize(ValueRefDeserializer::new_with(
+                value,
+                match self.current_key {
+                    Some(ref key) => Path::Map {
+                        parent: &self.path,
+                        key,
+                    },
+                    None => Path::Unknown { parent: &self.path },
+                },
+                self.unused_key_callback.as_deref_mut(),
+            )),
+            None if self.has_unprocessed_flatten_keys() => {
+                self.flatten_keys_done += 1;
+
+                let flattened = self.rest.drain(..).collect::<Vec<_>>();
+                let mut collect_unused = |_: Path<'_>, key, value| {
+                    self.rest.push((key, value));
+                };
+
+                let deserializer = MapRefDeserializer {
+                    iter: Some(Box::new(flattened.into_iter())),
+                    current_key: None,
+                    path: match self.current_key {
+                        Some(ref key) => Path::Map {
+                            parent: &self.path,
+                            key,
+                        },
+                        None => Path::Unknown { parent: &self.path },
+                    },
+                    value: None,
+                    unused_key_callback: Some(&mut collect_unused),
+                };
+
+                seed.deserialize(deserializer)
+            }
+            None => panic!("visit_value called before visit_key"),
+        }
+    }
+
+    fn size_hint(&self) -> Option<usize> {
+        match self.iter.as_ref()?.size_hint() {
+            (lower, Some(upper)) if lower == upper => Some(upper),
+            _ => None,
+        }
+    }
+}
+
+impl<'p, 'de, U> Deserializer<'de> for StructRefDeserializer<'p, '_, 'de, U>
+where
+    U: for<'a> FnMut(Path<'a>, &'de Value, &'de Value),
+{
     type Error = Error;
 
     #[inline]
@@ -539,6 +1291,7 @@ impl<'de> Deserializer<'de> for MapRefDeserializer<'de> {
     where
         V: Visitor<'de>,
     {
+        drop(self);
         visitor.visit_unit()
     }
 

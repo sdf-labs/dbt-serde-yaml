@@ -1,5 +1,6 @@
 use crate::mapping::{DuplicateKey, MappingVisitor};
 use crate::path::Path;
+use crate::value::de::borrowed::ValueRefDeserializer;
 use crate::value::tagged::TagStringVisitor;
 use crate::value::TaggedValue;
 use crate::{error, number, spanned, Error, Sequence, Span, Value};
@@ -71,6 +72,16 @@ impl Value {
             Some(&mut field_transformer),
         );
 
+        T::deserialize(de)
+    }
+
+    /// Deserialize a [Value] into an instance of some [Deserialize] type `T`.
+    pub fn to_typed<'de, T, U>(&'de self, mut unused_key_callback: U) -> Result<T, Error>
+    where
+        T: Deserialize<'de>,
+        U: FnMut(Path<'_>, &'de Value, &'de Value),
+    {
+        let de = ValueRefDeserializer::new_with(self, Path::Root, Some(&mut unused_key_callback));
         T::deserialize(de)
     }
 }
