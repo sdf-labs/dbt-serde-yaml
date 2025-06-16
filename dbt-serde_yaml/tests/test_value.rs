@@ -261,7 +261,7 @@ fn test_to_typed() {
     let value = dbt_serde_yaml::from_str::<Value>("xyz").unwrap();
     let s: String = value
         .to_typed(|path, key: &Value, _| {
-            unused_keys.push((path.to_string(), key));
+            unused_keys.push((path.to_string(), key.clone()));
         })
         .unwrap();
     assert!(unused_keys.is_empty());
@@ -270,7 +270,7 @@ fn test_to_typed() {
     let value = dbt_serde_yaml::from_str::<Value>("- first\n- second\n- third").unwrap();
     let arr: Vec<String> = value
         .to_typed(|path, key: &Value, _| {
-            unused_keys.push((path.to_string(), key));
+            unused_keys.push((path.to_string(), key.clone()));
         })
         .unwrap();
     assert!(unused_keys.is_empty());
@@ -296,12 +296,12 @@ fn test_to_typed() {
 
     let test: Test = value
         .to_typed(|path, key: &Value, _| {
-            unused_keys.push((path.to_string(), key));
+            unused_keys.push((path.to_string(), key.clone()));
         })
         .unwrap();
     assert_eq!(
         unused_keys,
-        vec![("third".to_string(), &Value::string("third".to_string()))]
+        vec![("third".to_string(), Value::string("third".to_string()))]
     );
     assert_eq!(
         test,
@@ -314,12 +314,12 @@ fn test_to_typed() {
     unused_keys.clear();
     let test2: Test2 = value
         .to_typed(|path, key: &Value, _| {
-            unused_keys.push((path.to_string(), key));
+            unused_keys.push((path.to_string(), key.clone()));
         })
         .unwrap();
     assert_eq!(
         unused_keys,
-        vec![("second".to_string(), &Value::string("second".to_string()))]
+        vec![("second".to_string(), Value::string("second".to_string()))]
     );
     assert_eq!(
         test2,
@@ -360,7 +360,7 @@ fn test_to_typed() {
     .unwrap();
     let test3: Test3 = value
         .to_typed(|path, key: &Value, _| {
-            unused_keys.push((path.to_string(), key));
+            unused_keys.push((path.to_string(), key.clone()));
         })
         .unwrap();
 
@@ -368,7 +368,7 @@ fn test_to_typed() {
         unused_keys,
         vec![(
             "first.third".to_string(),
-            &Value::string("third".to_string())
+            Value::string("third".to_string())
         )]
     );
     unused_keys.clear();
@@ -399,12 +399,12 @@ fn test_to_typed() {
     assert_eq!(test3.seconds.len(), 2);
     let test2_1: Test2 = (*test3.seconds[0])
         .to_typed(|path, key: &Value, _| {
-            unused_keys.push((path.to_string(), key));
+            unused_keys.push((path.to_string(), key.clone()));
         })
         .unwrap();
     assert_eq!(
         unused_keys,
-        vec![("second".to_string(), &Value::string("second".to_string()))]
+        vec![("second".to_string(), Value::string("second".to_string()))]
     );
     assert_eq!(
         test2_1,

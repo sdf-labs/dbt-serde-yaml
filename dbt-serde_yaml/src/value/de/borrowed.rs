@@ -18,7 +18,7 @@ fn visit_sequence_ref<'p, 'u, 'de, V, U>(
 ) -> Result<V::Value, Error>
 where
     V: Visitor<'de>,
-    U: for<'a> FnMut(Path<'a>, &'de Value, &'de Value),
+    U: for<'a, 'v> FnMut(Path<'a>, &'v Value, &'v Value),
 {
     let len = sequence.len();
     let mut deserializer =
@@ -40,7 +40,7 @@ fn visit_mapping_ref<'p, 'u, 'de, V, U>(
 ) -> Result<V::Value, Error>
 where
     V: Visitor<'de>,
-    U: for<'a> FnMut(Path<'a>, &'de Value, &'de Value),
+    U: for<'a, 'v> FnMut(Path<'a>, &'v Value, &'v Value),
 {
     let len = mapping.len();
     let mut deserializer = MapRefDeserializer::new_with(mapping, current_path, unused_key_callback);
@@ -62,7 +62,7 @@ fn visit_struct_ref<'p, 'u, 'de, V, U>(
 ) -> Result<V::Value, Error>
 where
     V: Visitor<'de>,
-    U: for<'a> FnMut(Path<'a>, &'de Value, &'de Value),
+    U: for<'a, 'v> FnMut(Path<'a>, &'v Value, &'v Value),
 {
     let len = mapping.len();
     let mut deserializer =
@@ -335,7 +335,7 @@ impl<'p, 'de> ValueRefDeserializer<'p, '_, 'de, fn(Path<'_>, &Value, &Value)> {
 
 impl<'p, 'u, 'de, U> ValueRefDeserializer<'p, 'u, 'de, U>
 where
-    U: for<'a> FnMut(Path<'a>, &'de Value, &'de Value),
+    U: for<'a, 'v> FnMut(Path<'a>, &'v Value, &'v Value),
 {
     pub(crate) fn new_with(
         value: &'de Value,
@@ -352,7 +352,7 @@ where
 
 impl<'de, U> Deserializer<'de> for ValueRefDeserializer<'_, '_, 'de, U>
 where
-    U: for<'a> FnMut(Path<'a>, &'de Value, &'de Value),
+    U: for<'a, 'v> FnMut(Path<'a>, &'v Value, &'v Value),
 {
     type Error = Error;
 
@@ -710,7 +710,7 @@ struct EnumRefDeserializer<'p, 'u, 'de, U> {
 
 impl<'p, 'u, 'de, U> EnumAccess<'de> for EnumRefDeserializer<'p, 'u, 'de, U>
 where
-    U: for<'a> FnMut(Path<'a>, &'de Value, &'de Value),
+    U: for<'a, 'v> FnMut(Path<'a>, &'v Value, &'v Value),
 {
     type Error = Error;
     type Variant = VariantRefDeserializer<'p, 'u, 'de, U>;
@@ -738,7 +738,7 @@ struct VariantRefDeserializer<'p, 'u, 'de, U> {
 
 impl<'de, U> VariantAccess<'de> for VariantRefDeserializer<'_, '_, 'de, U>
 where
-    U: for<'a> FnMut(Path<'a>, &'de Value, &'de Value),
+    U: for<'a, 'v> FnMut(Path<'a>, &'v Value, &'v Value),
 {
     type Error = Error;
 
@@ -807,7 +807,7 @@ where
 
 impl<'de, U> VariantAccess<'de> for ValueRefDeserializer<'_, '_, 'de, U>
 where
-    U: for<'a> FnMut(Path<'a>, &'de Value, &'de Value),
+    U: for<'a, 'v> FnMut(Path<'a>, &'v Value, &'v Value),
 {
     type Error = Error;
 
@@ -896,7 +896,7 @@ impl<'p, 'u, 'de, U> SeqRefDeserializer<'p, 'u, 'de, U> {
 
 impl<'de, U> Deserializer<'de> for SeqRefDeserializer<'_, '_, 'de, U>
 where
-    U: for<'a> FnMut(Path<'a>, &'de Value, &'de Value),
+    U: for<'a, 'v> FnMut(Path<'a>, &'v Value, &'v Value),
 {
     type Error = Error;
 
@@ -935,7 +935,7 @@ where
 
 impl<'de, U> SeqAccess<'de> for SeqRefDeserializer<'_, '_, 'de, U>
 where
-    U: for<'a> FnMut(Path<'a>, &'de Value, &'de Value),
+    U: for<'a, 'v> FnMut(Path<'a>, &'v Value, &'v Value),
 {
     type Error = Error;
 
@@ -1000,7 +1000,7 @@ impl<'p, 'u, 'de> MapRefDeserializer<'p, 'u, 'de, fn(Path<'_>, &Value, &Value)> 
 
 impl<'p, 'u, 'de, U> MapRefDeserializer<'p, 'u, 'de, U>
 where
-    U: for<'a> FnMut(Path<'a>, &'de Value, &'de Value),
+    U: for<'a, 'v> FnMut(Path<'a>, &'v Value, &'v Value),
 {
     pub(crate) fn new_with(
         map: &'de Mapping,
@@ -1019,7 +1019,7 @@ where
 
 impl<'de, U> MapAccess<'de> for MapRefDeserializer<'_, '_, 'de, U>
 where
-    U: for<'a> FnMut(Path<'a>, &'de Value, &'de Value),
+    U: for<'a, 'v> FnMut(Path<'a>, &'v Value, &'v Value),
 {
     type Error = Error;
 
@@ -1068,7 +1068,7 @@ where
 
 impl<'p, 'de, U> Deserializer<'de> for MapRefDeserializer<'p, '_, 'de, U>
 where
-    U: for<'a> FnMut(Path<'a>, &'de Value, &'de Value),
+    U: for<'a, 'v> FnMut(Path<'a>, &'v Value, &'v Value),
 {
     type Error = Error;
 
@@ -1134,7 +1134,7 @@ pub(crate) struct StructRefDeserializer<'p, 'u, 'de, U> {
 
 impl<'p, 'u, 'de, U> StructRefDeserializer<'p, 'u, 'de, U>
 where
-    U: for<'a> FnMut(Path<'a>, &'de Value, &'de Value),
+    U: for<'a, 'v> FnMut(Path<'a>, &'v Value, &'v Value),
 {
     pub(crate) fn new_with(
         map: &'de Mapping,
@@ -1170,7 +1170,7 @@ where
 
 impl<'p, 'de, U> MapAccess<'de> for StructRefDeserializer<'p, '_, 'de, U>
 where
-    U: for<'a> FnMut(Path<'a>, &'de Value, &'de Value),
+    U: for<'a, 'v> FnMut(Path<'a>, &'v Value, &'v Value),
 {
     type Error = Error;
 
@@ -1241,25 +1241,41 @@ where
                 self.flatten_keys_done += 1;
 
                 let flattened = self.rest.drain(..).collect::<Vec<_>>();
-                let mut collect_unused = |_: Path<'_>, key, value| {
-                    self.rest.push((key, value));
-                };
-
-                let deserializer = MapRefDeserializer {
-                    iter: Some(Box::new(flattened.into_iter())),
-                    current_key: None,
-                    path: match self.current_key {
-                        Some(ref key) => Path::Map {
-                            parent: &self.path,
-                            key,
-                        },
-                        None => Path::Unknown { parent: &self.path },
+                let path = match self.current_key {
+                    Some(ref key) => Path::Map {
+                        parent: &self.path,
+                        key,
                     },
-                    value: None,
-                    unused_key_callback: Some(&mut collect_unused),
+                    None => Path::Unknown { parent: &self.path },
                 };
 
-                seed.deserialize(deserializer)
+                if self.has_unprocessed_flatten_keys() {
+                    let mut collect_unused = |_: Path<'_>, key: &Value, value: &Value| {
+                        // SAFETY: the references passed to this closure are
+                        // guaranteed to be borrowed for 'de
+                        let key: &'de Value = unsafe { std::mem::transmute(key) };
+                        let value: &'de Value = unsafe { std::mem::transmute(value) };
+                        self.rest.push((key, value));
+                    };
+                    let deserializer = MapRefDeserializer {
+                        iter: Some(Box::new(flattened.into_iter())),
+                        current_key: None,
+                        path,
+                        value: None,
+                        unused_key_callback: Some(&mut collect_unused),
+                    };
+
+                    seed.deserialize(deserializer)
+                } else {
+                    let deserializer = MapRefDeserializer {
+                        iter: Some(Box::new(flattened.into_iter())),
+                        current_key: None,
+                        path,
+                        value: None,
+                        unused_key_callback: self.unused_key_callback.as_deref_mut(),
+                    };
+                    seed.deserialize(deserializer)
+                }
             }
             None => panic!("visit_value called before visit_key"),
         }
@@ -1275,7 +1291,7 @@ where
 
 impl<'p, 'de, U> Deserializer<'de> for StructRefDeserializer<'p, '_, 'de, U>
 where
-    U: for<'a> FnMut(Path<'a>, &'de Value, &'de Value),
+    U: for<'a, 'v> FnMut(Path<'a>, &'v Value, &'v Value),
 {
     type Error = Error;
 

@@ -1360,6 +1360,7 @@ where
 
                 if self.has_unprocessed_flatten_keys() {
                     let mut collect_unused = |_: Path<'_>, key: &Value, value: &Value| {
+                        // TODO: avoid this clone
                         self.rest.push((key.clone(), value.clone()));
                     };
                     let deserializer = ValueDeserializer::new_with(

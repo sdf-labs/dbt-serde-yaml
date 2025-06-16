@@ -82,7 +82,7 @@ impl Value {
     pub fn to_typed<'de, T, U>(&'de self, mut unused_key_callback: U) -> Result<T, Error>
     where
         T: Deserialize<'de>,
-        U: FnMut(Path<'_>, &'de Value, &'de Value),
+        U: FnMut(Path<'_>, &Value, &Value),
     {
         let de = ValueRefDeserializer::new_with(self, Path::Root, Some(&mut unused_key_callback));
         T::deserialize(de)
