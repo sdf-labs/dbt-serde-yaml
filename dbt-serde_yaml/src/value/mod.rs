@@ -25,6 +25,8 @@ pub use crate::number::Number;
 #[doc(inline)]
 pub(crate) use de::ValueVisitor;
 
+pub use de::TransformedResult;
+
 /// Represents any valid YAML value.
 #[derive(Clone)]
 pub enum Value {
@@ -836,8 +838,8 @@ impl IntoDeserializer<'_, Error> for Value {
     type Deserializer = de::ValueDeserializer<
         'static,
         'static,
-        fn(Path<'_>, Value, Value),
-        fn(Value) -> Result<Value, Box<dyn std::error::Error + 'static + Send + Sync>>,
+        fn(Path<'_>, &Value, &Value),
+        fn(&Value) -> de::TransformedResult,
     >;
 
     fn into_deserializer(self) -> Self::Deserializer {

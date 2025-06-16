@@ -254,8 +254,8 @@ impl<'de> EnumAccess<'de> for TaggedValue {
     type Variant = ValueDeserializer<
         'static,
         'static,
-        fn(Path<'_>, Value, Value),
-        fn(Value) -> Result<Value, Box<dyn std::error::Error + 'static + Send + Sync>>,
+        fn(Path<'_>, &Value, &Value),
+        fn(&Value) -> super::de::TransformedResult,
     >;
 
     fn variant_seed<V>(self, seed: V) -> Result<(V::Value, Self::Variant), Error>
