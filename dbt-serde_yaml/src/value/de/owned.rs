@@ -370,6 +370,21 @@ where
         }
     }
 
+    pub(crate) fn new_with_transformed(
+        value: Value,
+        path: Path<'a>,
+        unused_key_callback: Option<&'f mut U>,
+        field_transformer: Option<&'f mut F>,
+    ) -> Self {
+        ValueDeserializer {
+            value,
+            path,
+            unused_key_callback,
+            field_transformer,
+            is_transformed: true,
+        }
+    }
+
     fn maybe_apply_transformation(
         &mut self,
     ) -> Result<(), Box<dyn std::error::Error + 'static + Send + Sync>> {
@@ -753,7 +768,7 @@ where
 
     fn deserialize_enum<V>(
         mut self,
-        _name: &str,
+        _name: &'static str,
         _variants: &'static [&'static str],
         visitor: V,
     ) -> Result<V::Value, Error>

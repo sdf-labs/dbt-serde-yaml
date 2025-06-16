@@ -16,6 +16,7 @@ mod owned;
 pub(crate) use borrowed::{MapRefDeserializer, SeqRefDeserializer};
 pub use owned::ValueDeserializer;
 
+/// A type alias for the result of transforming a [Value] into another [Value].
 pub type TransformedResult =
     Result<Option<Value>, Box<dyn std::error::Error + 'static + Send + Sync>>;
 
@@ -78,13 +79,24 @@ impl Value {
         T::deserialize(de)
     }
 
-    /// Deserialize a [Value] into an instance of some [Deserialize] type `T`.
-    pub fn to_typed<'de, T, U>(&'de self, mut unused_key_callback: U) -> Result<T, Error>
+    /// Deserialize a [Value] into an instance of some [Deserialize] type `T`,
+    /// without consuming the [Value].
+    pub fn to_typed<'de, T, U, F>(
+        &'de self,
+        mut unused_key_callback: U,
+        mut field_transformer: F,
+    ) -> Result<T, Error>
     where
         T: Deserialize<'de>,
         U: FnMut(Path<'_>, &Value, &Value),
+        F: for<'v> FnMut(&'v Value) -> TransformedResult,
     {
-        let de = ValueRefDeserializer::new_with(self, Path::Root, Some(&mut unused_key_callback));
+        let de = ValueRefDeserializer::new_with(
+            self,
+            Path::Root,
+            Some(&mut unused_key_callback),
+            Some(&mut field_transformer),
+        );
         T::deserialize(de)
     }
 }

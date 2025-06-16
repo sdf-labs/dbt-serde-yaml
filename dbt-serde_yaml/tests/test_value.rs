@@ -6,9 +6,9 @@
 
 use std::collections::HashMap;
 
-use dbt_serde_yaml::{Number, Value, Verbatim};
+use dbt_serde_yaml::{value::TransformedResult, Number, Value, Verbatim};
 use indoc::indoc;
-use serde::de::IntoDeserializer;
+use serde::de::{DeserializeOwned, IntoDeserializer};
 use serde::Deserialize as _;
 use serde_derive::{Deserialize, Serialize};
 
@@ -60,10 +60,58 @@ fn test_into_deserializer() {
     );
 }
 
+type UnusedKeys = Vec<(String, Value, Value)>;
+
+fn deserialize_value_inner<T: DeserializeOwned + PartialEq + std::fmt::Debug>(
+    value: Value,
+    mut transformer: impl Fn(&Value) -> TransformedResult,
+) -> (Result<T, dbt_serde_yaml::Error>, UnusedKeys) {
+    let mut unused_keys1 = vec![];
+    let mut unused_keys2 = vec![];
+
+    let borrowed_path: Result<T, dbt_serde_yaml::Error> = value.to_typed(
+        |path, key: &Value, value: &Value| {
+            unused_keys2.push((path.to_string(), key.clone(), value.clone()));
+        },
+        &mut transformer,
+    );
+    let owned_path: Result<T, dbt_serde_yaml::Error> = value.into_typed(
+        |path, key: &Value, value: &Value| {
+            unused_keys1.push((path.to_string(), key.clone(), value.clone()));
+        },
+        &mut transformer,
+    );
+
+    match (&borrowed_path, &owned_path) {
+        (Ok(borrowed), Ok(owned)) => {
+            assert_eq!(borrowed, owned);
+        }
+        (Err(e1), Err(e2)) => {
+            assert_eq!(e1.to_string(), e2.to_string());
+        }
+        _ => {
+            panic!(
+                "Mismatched results: {:?} vs {:?}",
+                borrowed_path, owned_path
+            );
+        }
+    }
+
+    assert!(unused_keys1 == unused_keys2);
+
+    (owned_path, unused_keys1)
+}
+
+fn deserialize_value<T: DeserializeOwned + PartialEq + std::fmt::Debug>(
+    value: Value,
+    transformer: impl Fn(&Value) -> TransformedResult,
+) -> (T, UnusedKeys) {
+    let (result, unused_keys) = deserialize_value_inner(value, transformer);
+    (result.unwrap(), unused_keys)
+}
+
 #[test]
 fn test_into_typed() {
-    let mut unused_keys = vec![];
-
     fn transformer(v: &Value) -> Result<Option<Value>, Box<dyn std::error::Error + Send + Sync>> {
         match v {
             Value::String(s, span) => Ok(Some(Value::String(format!("{} name", s), span.clone()))),
@@ -72,26 +120,12 @@ fn test_into_typed() {
     }
 
     let value = dbt_serde_yaml::from_str::<Value>("xyz").unwrap();
-    let s: String = value
-        .into_typed(
-            |path, key: &Value, _| {
-                unused_keys.push((path.to_string(), key.clone()));
-            },
-            |_| Ok(None),
-        )
-        .unwrap();
+    let (s, unused_keys): (String, _) = deserialize_value(value, |_| Ok(None));
     assert!(unused_keys.is_empty());
     assert_eq!(s, "xyz");
 
     let value = dbt_serde_yaml::from_str::<Value>("- first\n- second\n- third").unwrap();
-    let arr: Vec<String> = value
-        .into_typed(
-            |path, key: &Value, _| {
-                unused_keys.push((path.to_string(), key.clone()));
-            },
-            transformer,
-        )
-        .unwrap();
+    let (arr, unused_keys): (Vec<String>, _) = deserialize_value(value, transformer);
     assert!(unused_keys.is_empty());
     assert_eq!(arr, &["first name", "second name", "third name"]);
 
@@ -113,18 +147,14 @@ fn test_into_typed() {
         "})
     .unwrap();
 
-    let test: Test = value
-        .clone()
-        .into_typed(
-            |path, key: &Value, _| {
-                unused_keys.push((path.to_string(), key.clone()));
-            },
-            transformer,
-        )
-        .unwrap();
+    let (test, unused_keys): (Test, _) = deserialize_value(value.clone(), transformer);
     assert_eq!(
         unused_keys,
-        vec![("third".to_string(), Value::string("third".to_string()))]
+        vec![(
+            "third".to_string(),
+            Value::string("third".to_string()),
+            Value::number(Number::from(100))
+        )]
     );
     assert_eq!(
         test,
@@ -134,18 +164,14 @@ fn test_into_typed() {
         }
     );
 
-    unused_keys.clear();
-    let test2: Test2 = value
-        .into_typed(
-            |path, key: &Value, _| {
-                unused_keys.push((path.to_string(), key.clone()));
-            },
-            transformer,
-        )
-        .unwrap();
+    let (test2, unused_keys): (Test2, _) = deserialize_value(value, transformer);
     assert_eq!(
         unused_keys,
-        vec![("second".to_string(), Value::string("second".to_string()))]
+        vec![(
+            "second".to_string(),
+            Value::string("second".to_string()),
+            Value::number(Number::from(99))
+        )]
     );
     assert_eq!(
         test2,
@@ -155,7 +181,6 @@ fn test_into_typed() {
             third: 100
         }
     );
-    unused_keys.clear();
 
     #[derive(Debug, Deserialize, PartialEq)]
     struct Test3 {
@@ -183,24 +208,16 @@ fn test_into_typed() {
         fifth:
           sixth: cde
         "});
-    let test3: Test3 = value
-        .unwrap()
-        .into_typed(
-            |path, key: &Value, _| {
-                unused_keys.push((path.to_string(), key.clone()));
-            },
-            transformer,
-        )
-        .unwrap();
+    let (test3, unused_keys): (Test3, _) = deserialize_value(value.unwrap(), transformer);
 
     assert_eq!(
         unused_keys,
         vec![(
             "first.third".to_string(),
-            Value::string("third".to_string())
+            Value::string("third".to_string()),
+            Value::number(Number::from(100))
         )]
     );
-    unused_keys.clear();
 
     assert_eq!(
         test3.first,
@@ -226,191 +243,26 @@ fn test_into_typed() {
         )]))
     );
     assert_eq!(test3.seconds.len(), 2);
-    let test2_1: Test2 = (*test3.seconds[0])
-        .clone()
-        .into_typed(
-            |path, key: &Value, _| {
-                unused_keys.push((path.to_string(), key.clone()));
-            },
-            |v| {
-                if let Some(n) = v.as_u64() {
-                    Ok(Some(Value::number(Number::from(n + 2))))
-                } else {
-                    Ok(None)
-                }
-            },
-        )
-        .unwrap();
+    let (test2_1, unused_keys): (Test2, _) = deserialize_value((*test3.seconds[0]).clone(), |v| {
+        if let Some(n) = v.as_u64() {
+            Ok(Some(Value::number(Number::from(n + 2))))
+        } else {
+            Ok(None)
+        }
+    });
     assert_eq!(
         unused_keys,
-        vec![("second".to_string(), Value::string("second".to_string()))]
+        vec![(
+            "second".to_string(),
+            Value::string("second".to_string()),
+            Value::number(Number::from(1))
+        )],
     );
     assert_eq!(
         test2_1,
         Test2 {
             first: Value::string("A".to_string()).into(),
             third: 3
-        }
-    );
-}
-
-#[test]
-fn test_to_typed() {
-    let mut unused_keys = vec![];
-
-    let value = dbt_serde_yaml::from_str::<Value>("xyz").unwrap();
-    let s: String = value
-        .to_typed(|path, key: &Value, _| {
-            unused_keys.push((path.to_string(), key.clone()));
-        })
-        .unwrap();
-    assert!(unused_keys.is_empty());
-    assert_eq!(s, "xyz");
-
-    let value = dbt_serde_yaml::from_str::<Value>("- first\n- second\n- third").unwrap();
-    let arr: Vec<String> = value
-        .to_typed(|path, key: &Value, _| {
-            unused_keys.push((path.to_string(), key.clone()));
-        })
-        .unwrap();
-    assert!(unused_keys.is_empty());
-    assert_eq!(arr, &["first", "second", "third"]);
-
-    #[derive(Debug, Deserialize, PartialEq)]
-    struct Test {
-        first: String,
-        second: u32,
-    }
-    #[derive(Debug, Deserialize, PartialEq)]
-    struct Test2 {
-        first: Verbatim<Value>,
-        third: u32,
-    }
-
-    let value = dbt_serde_yaml::from_str::<Value>(indoc! {"
-        first: abc
-        second: 99
-        third: 100
-        "})
-    .unwrap();
-
-    let test: Test = value
-        .to_typed(|path, key: &Value, _| {
-            unused_keys.push((path.to_string(), key.clone()));
-        })
-        .unwrap();
-    assert_eq!(
-        unused_keys,
-        vec![("third".to_string(), Value::string("third".to_string()))]
-    );
-    assert_eq!(
-        test,
-        Test {
-            first: "abc".to_string(),
-            second: 99
-        }
-    );
-
-    unused_keys.clear();
-    let test2: Test2 = value
-        .to_typed(|path, key: &Value, _| {
-            unused_keys.push((path.to_string(), key.clone()));
-        })
-        .unwrap();
-    assert_eq!(
-        unused_keys,
-        vec![("second".to_string(), Value::string("second".to_string()))]
-    );
-    assert_eq!(
-        test2,
-        Test2 {
-            // field_transform is not applied to `Verbatim`-typed fields:
-            first: Value::string("abc".to_string()).into(),
-            third: 100
-        }
-    );
-    unused_keys.clear();
-
-    #[derive(Debug, Deserialize, PartialEq)]
-    struct Test3 {
-        first: Test,
-        seconds: Vec<Verbatim<Value>>,
-        third: Option<Value>,
-        fourth: Option<Option<String>>,
-        #[serde(flatten)]
-        rest: Option<HashMap<String, Value>>,
-    }
-
-    let value = dbt_serde_yaml::from_str::<Value>(indoc! {"
-        first:
-          first: abc
-          second: 99
-          third: 100
-        seconds:
-          -   first: A
-              second: 1
-              third: 1
-          -   first: B
-              third: 2
-        fourth: xyz
-        third: xyz
-        fifth:
-          sixth: cde
-        "})
-    .unwrap();
-    let test3: Test3 = value
-        .to_typed(|path, key: &Value, _| {
-            unused_keys.push((path.to_string(), key.clone()));
-        })
-        .unwrap();
-
-    assert_eq!(
-        unused_keys,
-        vec![(
-            "first.third".to_string(),
-            Value::string("third".to_string())
-        )]
-    );
-    unused_keys.clear();
-
-    assert_eq!(
-        test3.first,
-        Test {
-            first: "abc".to_string(),
-            second: 99
-        }
-    );
-    assert_eq!(test3.third, Some(Value::string("xyz".to_string())));
-    assert_eq!(test3.fourth, Some(Some("xyz".to_string())));
-    assert_eq!(
-        test3.rest,
-        Some(HashMap::from([(
-            "fifth".to_string(),
-            Value::mapping(
-                [(
-                    Value::string("sixth".to_string()),
-                    Value::string("cde".to_string()),
-                )]
-                .into_iter()
-                .collect()
-            )
-        )]))
-    );
-    assert_eq!(test3.seconds.len(), 2);
-    let test2_1: Test2 = (*test3.seconds[0])
-        .to_typed(|path, key: &Value, _| {
-            unused_keys.push((path.to_string(), key.clone()));
-        })
-        .unwrap();
-    assert_eq!(
-        unused_keys,
-        vec![("second".to_string(), Value::string("second".to_string()))]
-    );
-    assert_eq!(
-        test2_1,
-        Test2 {
-            first: Value::string("A".to_string()).into(),
-            third: 1
         }
     );
 }
@@ -429,21 +281,21 @@ fn test_into_typed_external_err() {
     impl std::error::Error for Error {}
 
     let value = dbt_serde_yaml::from_str::<Value>("xyz").unwrap();
-    let err = value
-        .into_typed::<String, _, _>(
-            |path, key: &Value, _| {
-                panic!("unexpected key {:?} at path {:?}", key, path.to_string());
-            },
-            |v| {
-                Err(Error {
-                    msg: format!("error {}", v.as_str().unwrap()),
-                }
-                .into())
-            },
-        )
-        .unwrap_err();
+    let (err, unused_keys) = deserialize_value_inner::<String>(value, |v| {
+        Err(Error {
+            msg: format!("error {}", v.as_str().unwrap()),
+        }
+        .into())
+    });
+    if !unused_keys.is_empty() {
+        panic!("unexpected unused keys: {:?}", unused_keys);
+    }
     assert_eq!(
-        err.into_external().unwrap().downcast::<Error>().unwrap(),
+        err.unwrap_err()
+            .into_external()
+            .unwrap()
+            .downcast::<Error>()
+            .unwrap(),
         Box::new(Error {
             msg: "error xyz".to_string()
         })
@@ -757,20 +609,10 @@ fn test_flatten() {
         z: 3
     "})
     .unwrap();
-    let thing3a: Thing3 = value
-        .to_typed(|path, key: &Value, _| {
-            panic!("unexpected key {:?} at path {:?}", key, path.to_string());
-        })
-        .unwrap();
-    let thing3: Thing3 = value
-        .into_typed(
-            |path, key: &Value, _| {
-                panic!("unexpected key {:?} at path {:?}", key, path.to_string());
-            },
-            |_| Ok(None),
-        )
-        .unwrap();
-    assert_eq!(thing3a, thing3);
+    let (thing3, unused_keys) = deserialize_value::<Thing3>(value, |_| Ok(None));
+    if !unused_keys.is_empty() {
+        panic!("unexpected unused keys: {:?}", unused_keys);
+    }
     assert_eq!(thing3.x, Some(1));
     assert_eq!(*thing3.y, 2);
     assert_eq!(*(thing3.__flatten__["z"]), Some(3));
@@ -822,20 +664,16 @@ fn test_verbatim_flatten_nested() {
         b: 4
     "})
     .unwrap();
-    let thing4: Thing4 = value
-        .into_typed(
-            |path, key: &Value, _| {
-                panic!("unexpected key {:?} at path {:?}", key, path.to_string());
-            },
-            |v| {
-                if v.is_i64() {
-                    Ok(Some(Value::null()))
-                } else {
-                    Ok(None)
-                }
-            },
-        )
-        .unwrap();
+    let (thing4, unused_keys) = deserialize_value::<Thing4>(value, |v| {
+        if v.is_i64() {
+            Ok(Some(Value::null()))
+        } else {
+            Ok(None)
+        }
+    });
+    if !unused_keys.is_empty() {
+        panic!("unexpected unused keys: {:?}", unused_keys);
+    }
     assert_eq!(thing4.x, None);
     assert_eq!(
         thing4.__thing5__,
