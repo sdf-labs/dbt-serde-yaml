@@ -255,7 +255,7 @@ impl<'de> EnumAccess<'de> for TaggedValue {
         'static,
         'static,
         fn(Path<'_>, Value, Value),
-        fn(Value) -> Result<Value, Box<dyn std::error::Error + 'static + Send + Sync>>,
+        fn(&Value) -> Result<Option<Value>, Box<dyn std::error::Error + 'static + Send + Sync>>,
     >;
 
     fn variant_seed<V>(self, seed: V) -> Result<(V::Value, Self::Variant), Error>

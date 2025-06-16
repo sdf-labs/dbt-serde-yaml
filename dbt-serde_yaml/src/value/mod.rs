@@ -837,7 +837,7 @@ impl IntoDeserializer<'_, Error> for Value {
         'static,
         'static,
         fn(Path<'_>, Value, Value),
-        fn(Value) -> Result<Value, Box<dyn std::error::Error + 'static + Send + Sync>>,
+        fn(&Value) -> Result<Option<Value>, Box<dyn std::error::Error + 'static + Send + Sync>>,
     >;
 
     fn into_deserializer(self) -> Self::Deserializer {

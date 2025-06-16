@@ -10,6 +10,8 @@ use serde::{
 
 use crate::{error, value::tagged, Error, Mapping, Path, Sequence, Value};
 
+use super::TransformedResult;
+
 fn visit_sequence<'de, 'a, 'b, V, U, F>(
     sequence: Sequence,
     current_path: Path<'b>,
@@ -20,7 +22,7 @@ fn visit_sequence<'de, 'a, 'b, V, U, F>(
 where
     V: Visitor<'de>,
     U: for<'p> FnMut(Path<'p>, Value, Value),
-    F: FnMut(Value) -> Result<Value, Box<dyn std::error::Error + 'static + Send + Sync>>,
+    F: for<'v> FnMut(&'v Value) -> TransformedResult,
 {
     let len = sequence.len();
     let mut deserializer = SeqDeserializer::new(
@@ -48,7 +50,7 @@ fn visit_mapping<'de, 'a, 'b, V, U, F>(
 where
     V: Visitor<'de>,
     U: for<'p> FnMut(Path<'p>, Value, Value),
-    F: FnMut(Value) -> Result<Value, Box<dyn std::error::Error + 'static + Send + Sync>>,
+    F: for<'v> FnMut(&'v Value) -> TransformedResult,
 {
     let len = mapping.len();
     let mut deserializer = MapDeserializer::new(
@@ -77,7 +79,7 @@ fn visit_struct<'de, 'a, 'b, V, U, F>(
 where
     V: Visitor<'de>,
     U: for<'p> FnMut(Path<'p>, Value, Value),
-    F: FnMut(Value) -> Result<Value, Box<dyn std::error::Error + 'static + Send + Sync>>,
+    F: for<'v> FnMut(&'v Value) -> TransformedResult,
 {
     let len = mapping.len();
     let mut deserializer = StructDeserializer::new(
@@ -336,14 +338,7 @@ pub struct ValueDeserializer<'a, 'b, U, F> {
     is_transformed: bool,
 }
 
-impl
-    ValueDeserializer<
-        '_,
-        '_,
-        fn(Path<'_>, Value, Value),
-        fn(Value) -> Result<Value, Box<dyn std::error::Error + 'static + Send + Sync>>,
-    >
-{
+impl ValueDeserializer<'_, '_, fn(Path<'_>, Value, Value), fn(&Value) -> TransformedResult> {
     pub(crate) fn new(value: Value) -> Self {
         ValueDeserializer {
             value,
@@ -358,7 +353,7 @@ impl
 impl<'a, 'b, U, F> ValueDeserializer<'a, 'b, U, F>
 where
     U: for<'p> FnMut(Path<'p>, Value, Value),
-    F: FnMut(Value) -> Result<Value, Box<dyn std::error::Error + 'static + Send + Sync>>,
+    F: for<'v> FnMut(&'v Value) -> TransformedResult,
 {
     pub(crate) fn new_with(
         value: Value,
@@ -380,7 +375,9 @@ where
     ) -> Result<(), Box<dyn std::error::Error + 'static + Send + Sync>> {
         if let Some(transformer) = &mut self.field_transformer {
             if !self.is_transformed && crate::verbatim::should_transform_any() {
-                self.value = transformer(std::mem::take(&mut self.value))?;
+                if let Some(v) = transformer(&self.value)? {
+                    self.value = v;
+                }
             }
         }
         Ok(())
@@ -390,7 +387,7 @@ where
 impl<'de, U, F> Deserializer<'de> for ValueDeserializer<'_, '_, U, F>
 where
     U: for<'p> FnMut(Path<'p>, Value, Value),
-    F: FnMut(Value) -> Result<Value, Box<dyn std::error::Error + 'static + Send + Sync>>,
+    F: for<'v> FnMut(&'v Value) -> TransformedResult,
 {
     type Error = Error;
 
@@ -829,7 +826,7 @@ struct EnumDeserializer<'a, 'b, U, F> {
 impl<'de, 'a, 'b, U, F> EnumAccess<'de> for EnumDeserializer<'a, 'b, U, F>
 where
     U: for<'p> FnMut(Path<'p>, Value, Value),
-    F: FnMut(Value) -> Result<Value, Box<dyn std::error::Error + 'static + Send + Sync>>,
+    F: for<'v> FnMut(&'v Value) -> TransformedResult,
 {
     type Error = Error;
     type Variant = VariantDeserializer<'a, 'b, U, F>;
@@ -860,7 +857,7 @@ struct VariantDeserializer<'a, 'b, U, F> {
 impl<'de, U, F> VariantAccess<'de> for VariantDeserializer<'_, '_, U, F>
 where
     U: for<'p> FnMut(Path<'p>, Value, Value),
-    F: FnMut(Value) -> Result<Value, Box<dyn std::error::Error + 'static + Send + Sync>>,
+    F: for<'v> FnMut(&'v Value) -> TransformedResult,
 {
     type Error = Error;
 
@@ -942,7 +939,7 @@ where
 impl<'de, U, F> VariantAccess<'de> for ValueDeserializer<'_, '_, U, F>
 where
     U: for<'p> FnMut(Path<'p>, Value, Value),
-    F: FnMut(Value) -> Result<Value, Box<dyn std::error::Error + 'static + Send + Sync>>,
+    F: for<'v> FnMut(&'v Value) -> TransformedResult,
 {
     type Error = Error;
 
@@ -1018,7 +1015,7 @@ pub(crate) struct SeqDeserializer<'a, 'b, U, F> {
 impl<'a, 'b, U, F> SeqDeserializer<'a, 'b, U, F>
 where
     U: for<'p> FnMut(Path<'p>, Value, Value),
-    F: FnMut(Value) -> Result<Value, Box<dyn std::error::Error + 'static + Send + Sync>>,
+    F: for<'v> FnMut(&'v Value) -> TransformedResult,
 {
     pub(crate) fn new(
         vec: Vec<Value>,
@@ -1039,7 +1036,7 @@ where
 impl<'de, U, F> Deserializer<'de> for SeqDeserializer<'_, '_, U, F>
 where
     U: for<'p> FnMut(Path<'p>, Value, Value),
-    F: FnMut(Value) -> Result<Value, Box<dyn std::error::Error + 'static + Send + Sync>>,
+    F: for<'v> FnMut(&'v Value) -> TransformedResult,
 {
     type Error = Error;
 
@@ -1080,7 +1077,7 @@ where
 impl<'de, U, F> SeqAccess<'de> for SeqDeserializer<'_, '_, U, F>
 where
     U: for<'p> FnMut(Path<'p>, Value, Value),
-    F: FnMut(Value) -> Result<Value, Box<dyn std::error::Error + 'static + Send + Sync>>,
+    F: for<'v> FnMut(&'v Value) -> TransformedResult,
 {
     type Error = Error;
 
@@ -1126,7 +1123,7 @@ pub(crate) struct MapDeserializer<'a, 'b, U, F> {
 impl<'a, 'b, U, F> MapDeserializer<'a, 'b, U, F>
 where
     U: for<'p> FnMut(Path<'p>, Value, Value),
-    F: FnMut(Value) -> Result<Value, Box<dyn std::error::Error + 'static + Send + Sync>>,
+    F: for<'v> FnMut(&'v Value) -> TransformedResult,
 {
     pub(crate) fn new(
         map: Mapping,
@@ -1148,7 +1145,7 @@ where
 impl<'de, U, F> MapAccess<'de> for MapDeserializer<'_, '_, U, F>
 where
     U: for<'p> FnMut(Path<'p>, Value, Value),
-    F: FnMut(Value) -> Result<Value, Box<dyn std::error::Error + 'static + Send + Sync>>,
+    F: for<'v> FnMut(&'v Value) -> TransformedResult,
 {
     type Error = Error;
 
@@ -1199,7 +1196,7 @@ where
 impl<'de, U, F> Deserializer<'de> for MapDeserializer<'_, '_, U, F>
 where
     U: for<'p> FnMut(Path<'p>, Value, Value),
-    F: FnMut(Value) -> Result<Value, Box<dyn std::error::Error + 'static + Send + Sync>>,
+    F: for<'v> FnMut(&'v Value) -> TransformedResult,
 {
     type Error = Error;
 
@@ -1242,7 +1239,7 @@ pub(crate) struct StructDeserializer<'a, 'b, U, F> {
 impl<'a, 'b, U, F> StructDeserializer<'a, 'b, U, F>
 where
     U: for<'p> FnMut(Path<'p>, Value, Value),
-    F: FnMut(Value) -> Result<Value, Box<dyn std::error::Error + 'static + Send + Sync>>,
+    F: for<'v> FnMut(&'v Value) -> TransformedResult,
 {
     pub(crate) fn new(
         map: Mapping,
@@ -1281,7 +1278,7 @@ where
 impl<'de, U, F> MapAccess<'de> for StructDeserializer<'_, '_, U, F>
 where
     U: for<'p> FnMut(Path<'p>, Value, Value),
-    F: FnMut(Value) -> Result<Value, Box<dyn std::error::Error + 'static + Send + Sync>>,
+    F: for<'v> FnMut(&'v Value) -> TransformedResult,
 {
     type Error = Error;
 
@@ -1387,7 +1384,7 @@ where
 impl<'de, U, F> Deserializer<'de> for StructDeserializer<'_, '_, U, F>
 where
     U: for<'p> FnMut(Path<'p>, Value, Value),
-    F: FnMut(Value) -> Result<Value, Box<dyn std::error::Error + 'static + Send + Sync>>,
+    F: for<'v> FnMut(&'v Value) -> TransformedResult,
 {
     type Error = Error;
 

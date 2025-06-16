@@ -16,6 +16,8 @@ mod owned;
 pub(crate) use borrowed::{MapRefDeserializer, SeqRefDeserializer};
 pub use owned::ValueDeserializer;
 
+type TransformedResult = Result<Option<Value>, Box<dyn std::error::Error + 'static + Send + Sync>>;
+
 impl Value {
     /// Deserialize a [Value] from a string of YAML text.
     pub fn from_str<F>(s: &str, duplicate_key_callback: F) -> Result<Self, Error>
@@ -63,7 +65,7 @@ impl Value {
     where
         T: Deserialize<'de>,
         U: FnMut(Path<'_>, Value, Value),
-        F: FnMut(Value) -> Result<Value, Box<dyn std::error::Error + 'static + Send + Sync>>,
+        F: for<'v> FnMut(&'v Value) -> TransformedResult,
     {
         let de = ValueDeserializer::new_with(
             self,

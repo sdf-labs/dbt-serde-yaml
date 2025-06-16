@@ -64,10 +64,10 @@ fn test_into_deserializer() {
 fn test_into_typed() {
     let mut unused_keys = vec![];
 
-    fn transformer(v: Value) -> Result<Value, Box<dyn std::error::Error + Send + Sync>> {
+    fn transformer(v: &Value) -> Result<Option<Value>, Box<dyn std::error::Error + Send + Sync>> {
         match v {
-            Value::String(s, span) => Ok(Value::String(format!("{} name", s), span)),
-            _ => Ok(v),
+            Value::String(s, span) => Ok(Some(Value::String(format!("{} name", s), span.clone()))),
+            _ => Ok(None),
         }
     }
 
@@ -77,7 +77,7 @@ fn test_into_typed() {
             |path, key: Value, _| {
                 unused_keys.push((path.to_string(), key));
             },
-            Ok,
+            |_| Ok(None),
         )
         .unwrap();
     assert!(unused_keys.is_empty());
@@ -234,9 +234,9 @@ fn test_into_typed() {
             },
             |v| {
                 if let Some(n) = v.as_u64() {
-                    Ok(Value::number(Number::from(n + 2)))
+                    Ok(Some(Value::number(Number::from(n + 2))))
                 } else {
-                    Ok(v)
+                    Ok(None)
                 }
             },
         )
@@ -672,9 +672,9 @@ fn test_verbatim() {
             },
             |v| {
                 if let Some(v) = v.as_i64() {
-                    Ok(Value::from(v + 100))
+                    Ok(Some(Value::from(v + 100)))
                 } else {
-                    Ok(v)
+                    Ok(None)
                 }
             },
         )
@@ -717,9 +717,9 @@ fn test_verbatim_flatten() {
             },
             |v| {
                 if v.is_i64() {
-                    Ok(Value::null())
+                    Ok(Some(Value::null()))
                 } else {
-                    Ok(v)
+                    Ok(None)
                 }
             },
         )
@@ -767,7 +767,7 @@ fn test_flatten() {
             |path, key: Value, _| {
                 panic!("unexpected key {:?} at path {:?}", key, path.to_string());
             },
-            Ok,
+            |_| Ok(None),
         )
         .unwrap();
     assert_eq!(thing3a, thing3);
@@ -829,9 +829,9 @@ fn test_verbatim_flatten_nested() {
             },
             |v| {
                 if v.is_i64() {
-                    Ok(Value::null())
+                    Ok(Some(Value::null()))
                 } else {
-                    Ok(v)
+                    Ok(None)
                 }
             },
         )
