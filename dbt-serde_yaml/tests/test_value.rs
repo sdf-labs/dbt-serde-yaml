@@ -74,8 +74,8 @@ fn test_into_typed() {
     let value = dbt_serde_yaml::from_str::<Value>("xyz").unwrap();
     let s: String = value
         .into_typed(
-            |path, key: Value, _| {
-                unused_keys.push((path.to_string(), key));
+            |path, key: &Value, _| {
+                unused_keys.push((path.to_string(), key.clone()));
             },
             |_| Ok(None),
         )
@@ -86,8 +86,8 @@ fn test_into_typed() {
     let value = dbt_serde_yaml::from_str::<Value>("- first\n- second\n- third").unwrap();
     let arr: Vec<String> = value
         .into_typed(
-            |path, key: Value, _| {
-                unused_keys.push((path.to_string(), key));
+            |path, key: &Value, _| {
+                unused_keys.push((path.to_string(), key.clone()));
             },
             transformer,
         )
@@ -116,8 +116,8 @@ fn test_into_typed() {
     let test: Test = value
         .clone()
         .into_typed(
-            |path, key: Value, _| {
-                unused_keys.push((path.to_string(), key));
+            |path, key: &Value, _| {
+                unused_keys.push((path.to_string(), key.clone()));
             },
             transformer,
         )
@@ -137,8 +137,8 @@ fn test_into_typed() {
     unused_keys.clear();
     let test2: Test2 = value
         .into_typed(
-            |path, key: Value, _| {
-                unused_keys.push((path.to_string(), key));
+            |path, key: &Value, _| {
+                unused_keys.push((path.to_string(), key.clone()));
             },
             transformer,
         )
@@ -186,8 +186,8 @@ fn test_into_typed() {
     let test3: Test3 = value
         .unwrap()
         .into_typed(
-            |path, key: Value, _| {
-                unused_keys.push((path.to_string(), key));
+            |path, key: &Value, _| {
+                unused_keys.push((path.to_string(), key.clone()));
             },
             transformer,
         )
@@ -229,8 +229,8 @@ fn test_into_typed() {
     let test2_1: Test2 = (*test3.seconds[0])
         .clone()
         .into_typed(
-            |path, key: Value, _| {
-                unused_keys.push((path.to_string(), key));
+            |path, key: &Value, _| {
+                unused_keys.push((path.to_string(), key.clone()));
             },
             |v| {
                 if let Some(n) = v.as_u64() {
@@ -431,7 +431,7 @@ fn test_into_typed_external_err() {
     let value = dbt_serde_yaml::from_str::<Value>("xyz").unwrap();
     let err = value
         .into_typed::<String, _, _>(
-            |path, key: Value, _| {
+            |path, key: &Value, _| {
                 panic!("unexpected key {:?} at path {:?}", key, path.to_string());
             },
             |v| {
@@ -667,7 +667,7 @@ fn test_verbatim() {
     let value = dbt_serde_yaml::from_str::<Value>(yaml).unwrap();
     let thing: Thing = value
         .into_typed(
-            |path, key: Value, _| {
+            |path, key: &Value, _| {
                 panic!("unexpected key {:?} at path {:?}", key, path.to_string());
             },
             |v| {
@@ -712,7 +712,7 @@ fn test_verbatim_flatten() {
     .unwrap();
     let thing2: Thing2 = value
         .into_typed(
-            |path, key: Value, _| {
+            |path, key: &Value, _| {
                 panic!("unexpected key {:?} at path {:?}", key, path.to_string());
             },
             |v| {
@@ -764,7 +764,7 @@ fn test_flatten() {
         .unwrap();
     let thing3: Thing3 = value
         .into_typed(
-            |path, key: Value, _| {
+            |path, key: &Value, _| {
                 panic!("unexpected key {:?} at path {:?}", key, path.to_string());
             },
             |_| Ok(None),
@@ -824,7 +824,7 @@ fn test_verbatim_flatten_nested() {
     .unwrap();
     let thing4: Thing4 = value
         .into_typed(
-            |path, key: Value, _| {
+            |path, key: &Value, _| {
                 panic!("unexpected key {:?} at path {:?}", key, path.to_string());
             },
             |v| {
