@@ -171,6 +171,8 @@ pub use crate::spanned::{reset_marker, set_marker, Marker, Span, Spanned};
 pub use crate::spanned::with_filename;
 
 #[doc(inline)]
+pub use crate::shouldbe::{ShouldBe, WhyNot};
+#[doc(inline)]
 pub use crate::value::{from_value, to_value, Index, Number, Sequence, Value};
 #[doc(inline)]
 pub use crate::verbatim::Verbatim;
@@ -189,6 +191,7 @@ pub mod mapping;
 mod number;
 pub mod path;
 mod ser;
+mod shouldbe;
 pub mod spanned;
 pub mod value;
 mod verbatim;

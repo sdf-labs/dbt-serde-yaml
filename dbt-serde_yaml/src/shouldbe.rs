@@ -1,0 +1,333 @@
+use std::fmt::Debug;
+
+use serde::{
+    de::{DeserializeOwned, Error as _},
+    Deserialize, Deserializer, Serialize,
+};
+
+use crate::{Error, Value};
+
+/// Represents a value that should be of type `T`, or provides information about
+/// why it is not.
+#[derive(Clone)]
+pub enum ShouldBe<T> {
+    /// Contains the expected value of type `T`.
+    AndIs(T),
+
+    /// Failed to deserialize the value into type `T`.
+    ButIsnt {
+        /// The raw value that was attempted to be deserialized.
+        raw: Option<crate::Value>,
+
+        /// The reason why the value does not match the expected type or value.        
+        why_not: WhyNot,
+    },
+}
+
+impl<T> ShouldBe<T> {
+    /// Returns a reference to the inner value if it exists
+    pub fn as_ref(&self) -> Option<&T> {
+        match self {
+            ShouldBe::AndIs(value) => Some(value),
+            ShouldBe::ButIsnt { raw: _, why_not: _ } => None,
+        }
+    }
+
+    /// Returns a mutable reference to the inner value if it exists
+    pub fn as_ref_mut(&mut self) -> Option<&mut T> {
+        match self {
+            ShouldBe::AndIs(value) => Some(value),
+            ShouldBe::ButIsnt { raw: _, why_not: _ } => None,
+        }
+    }
+
+    /// Returns a reference to the error if the value is not of type `T`.
+    pub fn as_ref_err(&self) -> Option<&Error> {
+        match self {
+            ShouldBe::AndIs(_) => None,
+            ShouldBe::ButIsnt { raw: _, why_not } => match why_not {
+                WhyNot::Original(err) => Some(err),
+                WhyNot::Custom(_) => None,
+            },
+        }
+    }
+
+    /// Returns a reference to the raw value if it exists.
+    pub fn as_ref_raw(&self) -> Option<&crate::Value> {
+        match self {
+            ShouldBe::AndIs(_) => None,
+            ShouldBe::ButIsnt { raw, why_not: _ } => raw.as_ref(),
+        }
+    }
+
+    /// True if the value is of type `T`, false otherwise.
+    pub fn is(&self) -> bool {
+        matches!(self, ShouldBe::AndIs(_))
+    }
+
+    /// True if the value is not of type `T`, false otherwise.
+    pub fn isnt(&self) -> bool {
+        matches!(self, ShouldBe::ButIsnt { .. })
+    }
+
+    /// Consumes self, returning the inner value if it exists.
+    pub fn into_inner(self) -> Option<T> {
+        match self {
+            ShouldBe::AndIs(value) => Some(value),
+            ShouldBe::ButIsnt { raw: _, why_not: _ } => None,
+        }
+    }
+
+    /// Consumes self, returning the raw value if it exists.
+    pub fn into_raw(self) -> Option<crate::Value> {
+        match self {
+            ShouldBe::AndIs(_) => None,
+            ShouldBe::ButIsnt { raw, why_not: _ } => raw,
+        }
+    }
+
+    /// Extracts the raw value if it exists
+    pub fn take_raw(&mut self) -> Option<crate::Value> {
+        match self {
+            ShouldBe::AndIs(_) => None,
+            ShouldBe::ButIsnt { raw, why_not: _ } => raw.take(),
+        }
+    }
+
+    /// Consumes self, returning the contained [Error].
+    ///
+    /// Panics if the value is valid (i.e., it is of type `T`).
+    pub fn unwrap_err(self) -> Error {
+        match self {
+            ShouldBe::AndIs(_) => panic!("Called unwrap_err on a value that is valid"),
+            ShouldBe::ButIsnt { raw: _, why_not } => why_not.into(),
+        }
+    }
+}
+
+/// Represents the reason why a value does not match the expected type or value.
+pub enum WhyNot {
+    /// The original error that occurred during deserialization.
+    Original(Error),
+
+    /// A custom message explaining why the value does not match the expected type or value.
+    Custom(String),
+}
+
+impl Clone for WhyNot {
+    fn clone(&self) -> Self {
+        match self {
+            WhyNot::Original(err) => WhyNot::Custom(err.to_string()),
+            WhyNot::Custom(msg) => WhyNot::Custom(msg.clone()),
+        }
+    }
+}
+
+impl From<WhyNot> for Error {
+    fn from(why_not: WhyNot) -> Self {
+        match why_not {
+            WhyNot::Original(err) => err,
+            WhyNot::Custom(msg) => Error::custom(msg),
+        }
+    }
+}
+
+impl Debug for WhyNot {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            WhyNot::Original(err) => write!(f, "WhyNot::Original({})", err),
+            WhyNot::Custom(msg) => write!(f, "WhyNot::Custom({})", msg),
+        }
+    }
+}
+
+impl<T> Debug for ShouldBe<T>
+where
+    T: Debug,
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ShouldBe::AndIs(value) => value.fmt(f),
+            ShouldBe::ButIsnt { raw, why_not } => {
+                write!(
+                    f,
+                    "ShouldBe::ButIsnt {{ raw: {:?}, why_not: {:?} }}",
+                    raw, why_not
+                )
+            }
+        }
+    }
+}
+
+impl<T> Default for ShouldBe<T>
+where
+    T: Default,
+{
+    fn default() -> Self {
+        ShouldBe::AndIs(T::default())
+    }
+}
+
+impl<T> PartialEq for ShouldBe<T>
+where
+    T: PartialEq,
+{
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (ShouldBe::AndIs(a), ShouldBe::AndIs(b)) => a == b,
+            (ShouldBe::ButIsnt { raw: a, .. }, ShouldBe::ButIsnt { raw: b, .. }) => a == b,
+            _ => false,
+        }
+    }
+}
+
+impl<T> Eq for ShouldBe<T> where T: Eq {}
+
+impl<T> PartialOrd for ShouldBe<T>
+where
+    T: PartialOrd,
+{
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        match (self, other) {
+            (ShouldBe::AndIs(a), ShouldBe::AndIs(b)) => a.partial_cmp(b),
+            (ShouldBe::ButIsnt { raw: a, .. }, ShouldBe::ButIsnt { raw: b, .. }) => {
+                a.partial_cmp(b)
+            }
+            _ => None,
+        }
+    }
+}
+
+impl<T> Ord for ShouldBe<T>
+where
+    T: Ord,
+{
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        match (self, other) {
+            (ShouldBe::AndIs(a), ShouldBe::AndIs(b)) => a.cmp(b),
+            _ => std::cmp::Ordering::Equal,
+        }
+    }
+}
+
+impl<T> std::hash::Hash for ShouldBe<T>
+where
+    T: std::hash::Hash,
+{
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        match self {
+            ShouldBe::AndIs(value) => value.hash(state),
+            ShouldBe::ButIsnt { raw, .. } => raw.hash(state),
+        }
+    }
+}
+
+impl<T> Serialize for ShouldBe<T>
+where
+    T: Serialize,
+{
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        match self {
+            ShouldBe::AndIs(value) => value.serialize(serializer),
+            ShouldBe::ButIsnt { raw, .. } => {
+                if let Some(raw_value) = raw {
+                    // If we have a raw value, serialize it.
+                    raw_value.serialize(serializer)
+                } else {
+                    // Otherwise, just serialize a unit which should hopefully
+                    // trigger an error on deserialization.
+                    serializer.serialize_unit_struct("ShouldBe::ButIsnt")
+                }
+            }
+        }
+    }
+}
+
+impl<'de, T> Deserialize<'de> for ShouldBe<T>
+where
+    T: DeserializeOwned,
+{
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        // Communicate to the ValueDeserializers that we are expecting a
+        // `ShouldBe` value.
+        EXPECTING_SHOULD_BE.with(|cell| *cell.borrow_mut() = true);
+
+        match T::deserialize(deserializer) {
+            Ok(value) => Ok(ShouldBe::AndIs(value)),
+            Err(err) => {
+                if let Some((raw, err)) = take_why_not() {
+                    Ok(ShouldBe::ButIsnt {
+                        raw: Some(raw),
+                        why_not: WhyNot::Original(err),
+                    })
+                } else {
+                    let err = Error::custom(err);
+                    Ok(ShouldBe::ButIsnt {
+                        raw: None,
+                        why_not: WhyNot::Original(err),
+                    })
+                }
+            }
+        }
+    }
+}
+
+#[cfg(feature = "schemars")]
+impl<T> schemars::JsonSchema for ShouldBe<T>
+where
+    T: schemars::JsonSchema,
+{
+    fn schema_name() -> String {
+        T::schema_name()
+    }
+
+    fn json_schema(generator: &mut schemars::gen::SchemaGenerator) -> schemars::schema::Schema {
+        T::json_schema(generator)
+    }
+
+    fn is_referenceable() -> bool {
+        T::is_referenceable()
+    }
+
+    fn schema_id() -> std::borrow::Cow<'static, str> {
+        T::schema_id()
+    }
+
+    #[doc(hidden)]
+    fn _schemars_private_non_optional_json_schema(
+        generator: &mut schemars::gen::SchemaGenerator,
+    ) -> schemars::schema::Schema {
+        T::_schemars_private_non_optional_json_schema(generator)
+    }
+
+    #[doc(hidden)]
+    fn _schemars_private_is_option() -> bool {
+        T::_schemars_private_is_option()
+    }
+}
+
+pub(crate) fn is_expecting_should_be_then_reset() -> bool {
+    let res = EXPECTING_SHOULD_BE.with(|cell| *cell.borrow());
+    EXPECTING_SHOULD_BE.with(|cell| *cell.borrow_mut() = false);
+    res
+}
+
+fn take_why_not() -> Option<(Value, Error)> {
+    WHY_NOT.with(|cell| cell.borrow_mut().take())
+}
+
+pub(crate) fn set_why_not(raw: Value, err: Error) {
+    WHY_NOT.with(|cell| *cell.borrow_mut() = Some((raw, err)));
+}
+
+thread_local! {
+    static EXPECTING_SHOULD_BE: std::cell::RefCell<bool> = const {std::cell::RefCell::new(false)};
+
+    static WHY_NOT: std::cell::RefCell<Option<(Value, Error)>> = const {std::cell::RefCell::new(None)};
+}
