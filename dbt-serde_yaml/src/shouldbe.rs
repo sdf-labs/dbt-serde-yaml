@@ -1,3 +1,8 @@
+//! This module defines the `ShouldBe` type, which can be used as an error
+//! recovery mechanism during deserialization.
+//!
+//! See the [ShouldBe] documentation for more details.
+
 use std::fmt::Debug;
 
 use serde::{
@@ -9,17 +14,66 @@ use crate::{Error, Value};
 
 /// Represents a value that should be of type `T`, or provides information about
 /// why it is not.
+///
+/// Use this type in `#[derive(Deserialize)]` structs to "containerize" local
+/// failures, without failing the entire deserialization process.
+///
+/// # Example
+///
+/// ```
+/// # use dbt_serde_yaml::{ShouldBe, Value};
+/// # use serde_derive::{Serialize, Deserialize};
+/// use serde::{Serialize as _, Deserialize as _};
+///
+/// #[derive(Serialize, Deserialize, PartialEq, Debug)]
+/// struct Inner {
+///     field: i32,
+/// }
+///
+/// #[derive(Serialize, Deserialize, PartialEq, Debug)]
+/// struct Outer {
+///    items: Vec<ShouldBe<Inner>>,
+/// }
+///
+/// fn main() -> Result<(), dbt_serde_yaml::Error> {
+///    let yaml = r#"
+///        items:
+///          - field: 1
+///          - field: "2"
+///          - x: 3
+///    "#;
+///    let value: Value = dbt_serde_yaml::from_str(&yaml)?;
+///
+///    let outer: Outer = value.into_typed(|_, _, _| {}, |_| Ok(None))?;
+///    assert_eq!(outer.items.len(), 3);
+///    assert_eq!(outer.items[0].as_ref(), Some(&Inner { field: 1 }));
+///    assert!(outer.items[1].isnt());
+///    assert_eq!(outer.items[1].as_ref_err().unwrap().to_string(),
+///               "invalid type: string \"2\", expected i32 at line 4 column 19");
+///    assert!(outer.items[2].isnt());
+///    assert_eq!(outer.items[2].as_ref_err().unwrap().to_string(),
+///               "missing field `field` at line 5 column 12");
+///
+///    Ok(())
+/// }
+/// ```
 #[derive(Clone)]
 pub enum ShouldBe<T> {
-    /// Contains the expected value of type `T`.
+    /// On successful deserialization, will contain the expected value of type
+    /// `T`.
     AndIs(T),
 
     /// Failed to deserialize the value into type `T`.
     ButIsnt {
         /// The raw value that was attempted to be deserialized.
+        ///
+        /// This field will *only* be populated when deserializing from a
+        /// [Value]. When deserializing from other deserializers, this field
+        /// will be `None`.
         raw: Option<crate::Value>,
 
-        /// The reason why the value does not match the expected type or value.        
+        /// Contains the error or custom message corresponding to why the source
+        /// value failed to deserialize into type `T`.
         why_not: WhyNot,
     },
 }
@@ -165,6 +219,28 @@ where
 {
     fn default() -> Self {
         ShouldBe::AndIs(T::default())
+    }
+}
+
+impl<T> From<T> for ShouldBe<T> {
+    fn from(value: T) -> Self {
+        ShouldBe::AndIs(value)
+    }
+}
+
+impl<T> From<ShouldBe<T>> for Option<T> {
+    fn from(should_be: ShouldBe<T>) -> Self {
+        should_be.into_inner()
+    }
+}
+
+impl<T> From<ShouldBe<T>> for Result<T, Error>
+{
+    fn from(should_be: ShouldBe<T>) -> Self {
+        match should_be {
+            ShouldBe::AndIs(value) => Ok(value),
+            ShouldBe::ButIsnt { raw: _, why_not } => Err(why_not.into()),
+        }
     }
 }
 
