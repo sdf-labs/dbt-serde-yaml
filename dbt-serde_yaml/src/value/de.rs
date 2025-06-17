@@ -5,8 +5,8 @@ use crate::value::tagged::TagStringVisitor;
 use crate::value::TaggedValue;
 use crate::{error, number, spanned, Error, Sequence, Span, Value};
 use serde::de::{
-    self, Deserialize, DeserializeSeed, Deserializer, EnumAccess, Expected, MapAccess, SeqAccess,
-    Unexpected, VariantAccess, Visitor,
+    self, Deserialize, DeserializeSeed, Deserializer, EnumAccess, Error as _, Expected, MapAccess,
+    SeqAccess, Unexpected, VariantAccess, Visitor,
 };
 use std::fmt;
 
@@ -309,6 +309,24 @@ impl<'de> Deserialize<'de> for Value {
     }
 }
 
+macro_rules! maybe_why_not {
+    ($value_ref:expr, $res:expr) => {{
+        let is_expecting_should_be = $crate::shouldbe::is_expecting_should_be_then_reset();
+        let res = $res;
+        match res {
+            Err(err) if is_expecting_should_be => {
+                let msg = err.to_string();
+                $crate::shouldbe::set_why_not($value_ref.clone(), err);
+                // This error will be ignored by ShouldBe, but we still have to
+                // return an error here nonetheless.
+                Err(Error::custom(msg))
+            }
+            _ => res,
+        }
+    }};
+}
+pub(crate) use maybe_why_not;
+
 impl Value {
     fn deserialize_number<'de, V>(&self, visitor: V) -> Result<V::Value, Error>
     where
@@ -316,11 +334,14 @@ impl Value {
     {
         let span = self.span();
         self.broadcast_end_mark();
-        match self.untag_ref() {
-            Value::Number(n, ..) => n.deserialize_any(visitor),
-            other => Err(other.invalid_type(&visitor)),
-        }
-        .map_err(|e| error::set_span(e, span))
+        maybe_why_not!(
+            self,
+            match self.untag_ref() {
+                Value::Number(n, ..) => n.deserialize_any(visitor),
+                other => Err(other.invalid_type(&visitor)),
+            }
+            .map_err(|e| error::set_span(e, span))
+        )
     }
 
     #[cold]

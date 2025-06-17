@@ -8,7 +8,11 @@ use serde::{
     forward_to_deserialize_any, Deserialize, Deserializer,
 };
 
-use crate::{error, value::tagged, Error, Mapping, Path, Sequence, Value};
+use crate::{
+    error,
+    value::{de::borrowed::ValueRefDeserializer, tagged},
+    Error, Mapping, Path, Sequence, Value,
+};
 
 use super::TransformedResult;
 
@@ -399,6 +403,32 @@ where
     }
 }
 
+macro_rules! maybe_expecting_should_be {
+    ($self:expr, $method:ident, $($args:expr),*) => {{
+        if $crate::shouldbe::is_expecting_should_be_then_reset() {
+            let res = ValueRefDeserializer::new_with_transformed(
+                // SAFETY: ShouldBe<T>:Deserialize is only implemented for T:DeserializeOwned,
+                // so we know that `res` can not contain references to `self.value`.
+                unsafe { std::mem::transmute::<&Value, &'de Value>(&$self.value) },
+                $self.path,
+                $self.unused_key_callback,
+                $self.field_transformer,
+            )
+            .$method($($args),*);
+            return match res {
+                Ok(value) => Ok(value),
+                Err(e) => {
+                    let msg = e.to_string();
+                    crate::shouldbe::set_why_not($self.value, e);
+                    // ShouldBe will ignore this and use the error in `why_not`,
+                    // but we still need to return an error here nonetheless.
+                    Err(Error::custom(msg))
+                }
+            };
+        }
+    }};
+}
+
 impl<'de, U, F> Deserializer<'de> for ValueDeserializer<'_, '_, U, F>
 where
     U: for<'p, 'v> FnMut(Path<'p>, &'v Value, &'v Value),
@@ -411,6 +441,8 @@ where
         V: Visitor<'de>,
     {
         self.maybe_apply_transformation()?;
+        maybe_expecting_should_be!(self, deserialize_any, visitor);
+
         let span = self.value.span();
         self.value.broadcast_end_mark();
         match self.value {
@@ -442,6 +474,8 @@ where
         V: Visitor<'de>,
     {
         self.maybe_apply_transformation()?;
+        maybe_expecting_should_be!(self, deserialize_bool, visitor);
+
         let span = self.value.span();
         self.value.broadcast_end_mark();
         match self.value.untag() {
@@ -566,6 +600,8 @@ where
         V: Visitor<'de>,
     {
         self.maybe_apply_transformation()?;
+        maybe_expecting_should_be!(self, deserialize_string, visitor);
+
         let span = self.value.span();
         self.value.broadcast_end_mark();
         match self.value.untag() {
@@ -587,6 +623,8 @@ where
         V: Visitor<'de>,
     {
         self.maybe_apply_transformation()?;
+        maybe_expecting_should_be!(self, deserialize_byte_buf, visitor);
+
         let span = self.value.span();
         self.value.broadcast_end_mark();
         match self.value.untag() {
@@ -608,6 +646,8 @@ where
         V: Visitor<'de>,
     {
         self.maybe_apply_transformation()?;
+        maybe_expecting_should_be!(self, deserialize_option, visitor);
+
         let span = self.value.span();
         self.value.broadcast_end_mark();
         match self.value {
@@ -628,6 +668,8 @@ where
         V: Visitor<'de>,
     {
         self.maybe_apply_transformation()?;
+        maybe_expecting_should_be!(self, deserialize_unit, visitor);
+
         let span = self.value.span();
         self.value.broadcast_end_mark();
         match self.value {
@@ -645,13 +687,16 @@ where
     }
 
     fn deserialize_newtype_struct<V>(
-        self,
-        _name: &'static str,
+        mut self,
+        name: &'static str,
         visitor: V,
     ) -> Result<V::Value, Error>
     where
         V: Visitor<'de>,
     {
+        self.maybe_apply_transformation()?;
+        maybe_expecting_should_be!(self, deserialize_newtype_struct, name, visitor);
+
         let span = self.value.span();
         self.value.broadcast_end_mark();
         visitor
@@ -664,6 +709,8 @@ where
         V: Visitor<'de>,
     {
         self.maybe_apply_transformation()?;
+        maybe_expecting_should_be!(self, deserialize_seq, visitor);
+
         let span = self.value.span();
         self.value.broadcast_end_mark();
         match self.value.untag() {
@@ -710,6 +757,8 @@ where
         V: Visitor<'de>,
     {
         self.maybe_apply_transformation()?;
+        maybe_expecting_should_be!(self, deserialize_map, visitor);
+
         let span = self.value.span();
         self.value.broadcast_end_mark();
         match self.value.untag() {
@@ -734,7 +783,7 @@ where
 
     fn deserialize_struct<V>(
         mut self,
-        _name: &'static str,
+        name: &'static str,
         fields: &'static [&'static str],
         visitor: V,
     ) -> Result<V::Value, Error>
@@ -742,6 +791,8 @@ where
         V: Visitor<'de>,
     {
         self.maybe_apply_transformation()?;
+        maybe_expecting_should_be!(self, deserialize_struct, name, fields, visitor);
+
         let span = self.value.span();
         self.value.broadcast_end_mark();
         match self.value.untag() {
@@ -768,14 +819,16 @@ where
 
     fn deserialize_enum<V>(
         mut self,
-        _name: &'static str,
-        _variants: &'static [&'static str],
+        name: &'static str,
+        variants: &'static [&'static str],
         visitor: V,
     ) -> Result<V::Value, Error>
     where
         V: Visitor<'de>,
     {
         self.maybe_apply_transformation()?;
+        maybe_expecting_should_be!(self, deserialize_enum, name, variants, visitor);
+
         let span = self.value.span();
         self.value.broadcast_end_mark();
 
@@ -823,8 +876,10 @@ where
     where
         V: Visitor<'de>,
     {
-        self.value.broadcast_end_mark();
+        maybe_expecting_should_be!(self, deserialize_ignored_any, visitor);
+
         let span = self.value.span();
+        self.value.broadcast_end_mark();
         drop(self);
         visitor.visit_unit().map_err(|e| error::set_span(e, span))
     }

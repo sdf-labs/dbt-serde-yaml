@@ -348,6 +348,9 @@ pub struct ValueRefDeserializer<'p, 'f, 'de, U, F> {
     path: Path<'p>,
     unused_key_callback: Option<&'f mut U>,
     field_transformer: Option<&'f mut F>,
+    // Flag indicating whether the value has been already been transformed by
+    // field_transformer:
+    is_transformed: bool,
 }
 
 impl<'p, 'de>
@@ -359,6 +362,7 @@ impl<'p, 'de>
             path: Path::Root,
             unused_key_callback: None,
             field_transformer: None,
+            is_transformed: false,
         }
     }
 }
@@ -379,6 +383,22 @@ where
             path,
             unused_key_callback,
             field_transformer,
+            is_transformed: false,
+        }
+    }
+
+    pub(crate) fn new_with_transformed(
+        value: &'de Value,
+        path: Path<'p>,
+        unused_key_callback: Option<&'u mut U>,
+        field_transformer: Option<&'u mut F>,
+    ) -> Self {
+        ValueRefDeserializer {
+            value,
+            path,
+            unused_key_callback,
+            field_transformer,
+            is_transformed: true,
         }
     }
 }
@@ -386,7 +406,7 @@ where
 macro_rules! maybe_transform_and_forward_to_value_deserializer {
     ($self:expr, $method:ident, $($args:expr),*) => {
         if let Some(transformer) = &mut $self.field_transformer {
-            if crate::verbatim::should_transform_any() {
+            if !$self.is_transformed && crate::verbatim::should_transform_any() {
                 if let Some(v) = transformer(&$self.value)? {
                     return ValueDeserializer::new_with_transformed(
                         v,
@@ -400,6 +420,8 @@ macro_rules! maybe_transform_and_forward_to_value_deserializer {
         }
     };
 }
+
+use super::maybe_why_not;
 
 impl<'de, U, F> Deserializer<'de> for ValueRefDeserializer<'_, '_, 'de, U, F>
 where
@@ -416,28 +438,31 @@ where
 
         let span = self.value.span();
         self.value.broadcast_end_mark();
-        match self.value {
-            Value::Null(..) => visitor.visit_unit(),
-            Value::Bool(v, ..) => visitor.visit_bool(*v),
-            Value::Number(n, ..) => n.deserialize_any(visitor),
-            Value::String(v, ..) => visitor.visit_borrowed_str(v),
-            Value::Sequence(v, ..) => visit_sequence_ref(
-                v,
-                self.path,
-                visitor,
-                self.unused_key_callback,
-                self.field_transformer,
-            ),
-            Value::Mapping(v, ..) => visit_mapping_ref(
-                v,
-                self.path,
-                visitor,
-                self.unused_key_callback,
-                self.field_transformer,
-            ),
-            Value::Tagged(tagged, ..) => visitor.visit_enum(&**tagged),
-        }
-        .map_err(|e| error::set_span(e, span))
+        maybe_why_not!(
+            self.value,
+            match self.value {
+                Value::Null(..) => visitor.visit_unit(),
+                Value::Bool(v, ..) => visitor.visit_bool(*v),
+                Value::Number(n, ..) => n.deserialize_any(visitor),
+                Value::String(v, ..) => visitor.visit_borrowed_str(v),
+                Value::Sequence(v, ..) => visit_sequence_ref(
+                    v,
+                    self.path,
+                    visitor,
+                    self.unused_key_callback,
+                    self.field_transformer,
+                ),
+                Value::Mapping(v, ..) => visit_mapping_ref(
+                    v,
+                    self.path,
+                    visitor,
+                    self.unused_key_callback,
+                    self.field_transformer,
+                ),
+                Value::Tagged(tagged, ..) => visitor.visit_enum(&**tagged),
+            }
+            .map_err(|e| error::set_span(e, span))
+        )
     }
 
     fn deserialize_bool<V>(mut self, visitor: V) -> Result<V::Value, Error>
@@ -448,11 +473,14 @@ where
 
         let span = self.value.span();
         self.value.broadcast_end_mark();
-        match self.value.untag_ref() {
-            Value::Bool(v, ..) => visitor.visit_bool(*v),
-            other => Err(other.invalid_type(&visitor)),
-        }
-        .map_err(|e| error::set_span(e, span))
+        maybe_why_not!(
+            self.value,
+            match self.value.untag_ref() {
+                Value::Bool(v, ..) => visitor.visit_bool(*v),
+                other => Err(other.invalid_type(&visitor)),
+            }
+            .map_err(|e| error::set_span(e, span))
+        )
     }
 
     fn deserialize_i8<V>(mut self, visitor: V) -> Result<V::Value, Error>
@@ -563,12 +591,10 @@ where
         self.value.deserialize_number(visitor)
     }
 
-    fn deserialize_char<V>(mut self, visitor: V) -> Result<V::Value, Error>
+    fn deserialize_char<V>(self, visitor: V) -> Result<V::Value, Error>
     where
         V: Visitor<'de>,
     {
-        maybe_transform_and_forward_to_value_deserializer!(self, deserialize_char, visitor);
-
         self.deserialize_str(visitor)
     }
 
@@ -580,19 +606,20 @@ where
 
         let span = self.value.span();
         self.value.broadcast_end_mark();
-        match self.value.untag_ref() {
-            Value::String(v, ..) => visitor.visit_borrowed_str(v),
-            other => Err(other.invalid_type(&visitor)),
-        }
-        .map_err(|e| error::set_span(e, span))
+        maybe_why_not!(
+            self.value,
+            match self.value.untag_ref() {
+                Value::String(v, ..) => visitor.visit_borrowed_str(v),
+                other => Err(other.invalid_type(&visitor)),
+            }
+            .map_err(|e| error::set_span(e, span))
+        )
     }
 
-    fn deserialize_string<V>(mut self, visitor: V) -> Result<V::Value, Error>
+    fn deserialize_string<V>(self, visitor: V) -> Result<V::Value, Error>
     where
         V: Visitor<'de>,
     {
-        maybe_transform_and_forward_to_value_deserializer!(self, deserialize_string, visitor);
-
         self.deserialize_str(visitor)
     }
 
@@ -604,26 +631,27 @@ where
 
         let span = self.value.span();
         self.value.broadcast_end_mark();
-        match self.value.untag_ref() {
-            Value::String(v, ..) => visitor.visit_borrowed_str(v),
-            Value::Sequence(v, ..) => visit_sequence_ref(
-                v,
-                self.path,
-                visitor,
-                self.unused_key_callback,
-                self.field_transformer,
-            ),
-            other => Err(other.invalid_type(&visitor)),
-        }
-        .map_err(|e| error::set_span(e, span))
+        maybe_why_not!(
+            self.value,
+            match self.value.untag_ref() {
+                Value::String(v, ..) => visitor.visit_borrowed_str(v),
+                Value::Sequence(v, ..) => visit_sequence_ref(
+                    v,
+                    self.path,
+                    visitor,
+                    self.unused_key_callback,
+                    self.field_transformer,
+                ),
+                other => Err(other.invalid_type(&visitor)),
+            }
+            .map_err(|e| error::set_span(e, span))
+        )
     }
 
-    fn deserialize_byte_buf<V>(mut self, visitor: V) -> Result<V::Value, Error>
+    fn deserialize_byte_buf<V>(self, visitor: V) -> Result<V::Value, Error>
     where
         V: Visitor<'de>,
     {
-        maybe_transform_and_forward_to_value_deserializer!(self, deserialize_byte_buf, visitor);
-
         self.deserialize_bytes(visitor)
     }
 
@@ -635,11 +663,19 @@ where
 
         let span = self.value.span();
         self.value.broadcast_end_mark();
-        match self.value {
-            Value::Null(..) => visitor.visit_unit(),
-            _ => visitor.visit_some(self),
-        }
-        .map_err(|e| error::set_span(e, span))
+        maybe_why_not!(
+            self.value,
+            match self.value {
+                Value::Null(..) => visitor.visit_unit(),
+                _ => visitor.visit_some(ValueRefDeserializer::new_with_transformed(
+                    self.value,
+                    self.path,
+                    self.unused_key_callback,
+                    self.field_transformer,
+                )),
+            }
+            .map_err(|e| error::set_span(e, span))
+        )
     }
 
     fn deserialize_unit<V>(mut self, visitor: V) -> Result<V::Value, Error>
@@ -650,11 +686,14 @@ where
 
         let span = self.value.span();
         self.value.broadcast_end_mark();
-        match self.value {
-            Value::Null(..) => visitor.visit_unit(),
-            _ => Err(self.value.invalid_type(&visitor)),
-        }
-        .map_err(|e| error::set_span(e, span))
+        maybe_why_not!(
+            self.value,
+            match self.value {
+                Value::Null(..) => visitor.visit_unit(),
+                _ => Err(self.value.invalid_type(&visitor)),
+            }
+            .map_err(|e| error::set_span(e, span))
+        )
     }
 
     fn deserialize_unit_struct<V>(
@@ -692,9 +731,17 @@ where
 
         let span = self.value.span();
         self.value.broadcast_end_mark();
-        visitor
-            .visit_newtype_struct(self)
-            .map_err(|e| error::set_span(e, span))
+        maybe_why_not!(
+            self.value,
+            visitor
+                .visit_newtype_struct(ValueRefDeserializer::new_with_transformed(
+                    self.value,
+                    self.path,
+                    self.unused_key_callback,
+                    self.field_transformer
+                ))
+                .map_err(|e| error::set_span(e, span))
+        )
     }
 
     fn deserialize_seq<V>(mut self, visitor: V) -> Result<V::Value, Error>
@@ -707,52 +754,45 @@ where
 
         let span = self.value.span();
         self.value.broadcast_end_mark();
-        match self.value.untag_ref() {
-            Value::Sequence(v, ..) => visit_sequence_ref(
-                v,
-                self.path,
-                visitor,
-                self.unused_key_callback,
-                self.field_transformer,
-            ),
-            Value::Null(..) => visit_sequence_ref(
-                &EMPTY,
-                self.path,
-                visitor,
-                self.unused_key_callback,
-                self.field_transformer,
-            ),
-            other => Err(other.invalid_type(&visitor)),
-        }
-        .map_err(|e| error::set_span(e, span))
+        maybe_why_not!(
+            self.value,
+            match self.value.untag_ref() {
+                Value::Sequence(v, ..) => visit_sequence_ref(
+                    v,
+                    self.path,
+                    visitor,
+                    self.unused_key_callback,
+                    self.field_transformer,
+                ),
+                Value::Null(..) => visit_sequence_ref(
+                    &EMPTY,
+                    self.path,
+                    visitor,
+                    self.unused_key_callback,
+                    self.field_transformer,
+                ),
+                other => Err(other.invalid_type(&visitor)),
+            }
+            .map_err(|e| error::set_span(e, span))
+        )
     }
 
-    fn deserialize_tuple<V>(mut self, len: usize, visitor: V) -> Result<V::Value, Error>
+    fn deserialize_tuple<V>(self, _len: usize, visitor: V) -> Result<V::Value, Error>
     where
         V: Visitor<'de>,
     {
-        maybe_transform_and_forward_to_value_deserializer!(self, deserialize_tuple, len, visitor);
-
         self.deserialize_seq(visitor)
     }
 
     fn deserialize_tuple_struct<V>(
-        mut self,
-        name: &'static str,
-        len: usize,
+        self,
+        _name: &'static str,
+        _len: usize,
         visitor: V,
     ) -> Result<V::Value, Error>
     where
         V: Visitor<'de>,
     {
-        maybe_transform_and_forward_to_value_deserializer!(
-            self,
-            deserialize_tuple_struct,
-            name,
-            len,
-            visitor
-        );
-
         self.deserialize_seq(visitor)
     }
 
@@ -764,18 +804,21 @@ where
 
         let span = self.value.span();
         self.value.broadcast_end_mark();
-        match self.value.untag_ref() {
-            Value::Mapping(v, ..) => visit_mapping_ref(
-                v,
-                self.path,
-                visitor,
-                self.unused_key_callback,
-                self.field_transformer,
-            ),
-            Value::Null(..) => visitor.visit_map(&mut MapRefDeserializer::new_empty(self.path)),
-            other => Err(other.invalid_type(&visitor)),
-        }
-        .map_err(|e| error::set_span(e, span))
+        maybe_why_not!(
+            self.value,
+            match self.value.untag_ref() {
+                Value::Mapping(v, ..) => visit_mapping_ref(
+                    v,
+                    self.path,
+                    visitor,
+                    self.unused_key_callback,
+                    self.field_transformer,
+                ),
+                Value::Null(..) => visitor.visit_map(&mut MapRefDeserializer::new_empty(self.path)),
+                other => Err(other.invalid_type(&visitor)),
+            }
+            .map_err(|e| error::set_span(e, span))
+        )
     }
 
     fn deserialize_struct<V>(
@@ -797,19 +840,22 @@ where
 
         let span = self.value.span();
         self.value.broadcast_end_mark();
-        match self.value.untag_ref() {
-            Value::Mapping(v, ..) => visit_struct_ref(
-                v,
-                self.path,
-                visitor,
-                fields,
-                self.unused_key_callback,
-                self.field_transformer,
-            ),
-            Value::Null(..) => visitor.visit_map(&mut MapRefDeserializer::new_empty(self.path)),
-            other => Err(other.invalid_type(&visitor)),
-        }
-        .map_err(|e| error::set_span(e, span))
+        maybe_why_not!(
+            self.value,
+            match self.value.untag_ref() {
+                Value::Mapping(v, ..) => visit_struct_ref(
+                    v,
+                    self.path,
+                    visitor,
+                    fields,
+                    self.unused_key_callback,
+                    self.field_transformer,
+                ),
+                Value::Null(..) => visitor.visit_map(&mut MapRefDeserializer::new_empty(self.path)),
+                other => Err(other.invalid_type(&visitor)),
+            }
+            .map_err(|e| error::set_span(e, span))
+        )
     }
 
     fn deserialize_enum<V>(
@@ -831,51 +877,52 @@ where
 
         let span = self.value.span();
         self.value.broadcast_end_mark();
-
-        visitor
-            .visit_enum(match self.value {
-                Value::Tagged(tagged, ..) => EnumRefDeserializer {
-                    tag: tagged::nobang(&tagged.tag.string),
-                    path: self.path,
-                    value: Some(&tagged.value),
-                    unused_key_callback: self.unused_key_callback,
-                    field_transformer: self.field_transformer,
-                },
-                Value::String(variant, ..) => EnumRefDeserializer {
-                    tag: variant,
-                    path: self.path,
-                    value: None,
-                    unused_key_callback: self.unused_key_callback,
-                    field_transformer: self.field_transformer,
-                },
-                other => {
-                    return Err(error::set_span(
-                        Error::invalid_type(other.unexpected(), &"a Value::Tagged enum"),
-                        span,
-                    ));
-                }
-            })
-            .map_err(|e| error::set_span(e, span))
+        maybe_why_not!(
+            self.value,
+            visitor
+                .visit_enum(match self.value {
+                    Value::Tagged(tagged, ..) => EnumRefDeserializer {
+                        tag: tagged::nobang(&tagged.tag.string),
+                        path: self.path,
+                        value: Some(&tagged.value),
+                        unused_key_callback: self.unused_key_callback,
+                        field_transformer: self.field_transformer,
+                    },
+                    Value::String(variant, ..) => EnumRefDeserializer {
+                        tag: variant,
+                        path: self.path,
+                        value: None,
+                        unused_key_callback: self.unused_key_callback,
+                        field_transformer: self.field_transformer,
+                    },
+                    other => {
+                        return Err(error::set_span(
+                            Error::invalid_type(other.unexpected(), &"a Value::Tagged enum"),
+                            span,
+                        ));
+                    }
+                })
+                .map_err(|e| error::set_span(e, span))
+        )
     }
 
-    fn deserialize_identifier<V>(mut self, visitor: V) -> Result<V::Value, Error>
+    fn deserialize_identifier<V>(self, visitor: V) -> Result<V::Value, Error>
     where
         V: Visitor<'de>,
     {
-        maybe_transform_and_forward_to_value_deserializer!(self, deserialize_identifier, visitor);
-
         self.deserialize_string(visitor)
     }
 
-    fn deserialize_ignored_any<V>(mut self, visitor: V) -> Result<V::Value, Error>
+    fn deserialize_ignored_any<V>(self, visitor: V) -> Result<V::Value, Error>
     where
         V: Visitor<'de>,
     {
-        maybe_transform_and_forward_to_value_deserializer!(self, deserialize_ignored_any, visitor);
-
         let span = self.value.span();
         self.value.broadcast_end_mark();
-        visitor.visit_unit().map_err(|e| error::set_span(e, span))
+        maybe_why_not!(
+            self.value,
+            visitor.visit_unit().map_err(|e| error::set_span(e, span))
+        )
     }
 }
 
