@@ -105,6 +105,18 @@ where
     }
 }
 
+impl<T> Default for Spanned<T>
+where
+    T: Default,
+{
+    fn default() -> Self {
+        Spanned {
+            span: Default::default(),
+            node: T::default(),
+        }
+    }
+}
+
 impl<T> PartialEq for Spanned<T>
 where
     T: PartialEq,
