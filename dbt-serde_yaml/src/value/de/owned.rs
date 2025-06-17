@@ -1322,6 +1322,9 @@ where
             .iter()
             .copied()
             .partition(|key| !crate::is_flatten_key(key.as_bytes()));
+        if flatten_keys.len() > 1 {
+            panic!("Multiple flatten keys are not yet supported");
+        }
         StructDeserializer {
             iter: map.into_iter(),
             current_key: None,
@@ -1429,17 +1432,18 @@ where
                 };
 
                 if self.has_unprocessed_flatten_keys() {
-                    let mut collect_unused = |_: Path<'_>, key: &Value, value: &Value| {
-                        // TODO: avoid this clone
-                        self.rest.push((key.clone(), value.clone()));
-                    };
-                    let deserializer = ValueDeserializer::new_with(
-                        flattened,
-                        path,
-                        Some(&mut collect_unused),
-                        self.field_transformer.as_deref_mut(),
-                    );
-                    seed.deserialize(deserializer)
+                    // let mut collect_unused = |_: Path<'_>, key: &Value, value: &Value| {
+                    //     // TODO: avoid this clone
+                    //     self.rest.push((key.clone(), value.clone()));
+                    // };
+                    // let deserializer = ValueDeserializer::new_with(
+                    //     flattened,
+                    //     path,
+                    //     Some(&mut collect_unused),
+                    //     self.field_transformer.as_deref_mut(),
+                    // );
+                    // seed.deserialize(deserializer)
+                    todo!()
                 } else {
                     let deserializer = ValueDeserializer::new_with(
                         flattened,
