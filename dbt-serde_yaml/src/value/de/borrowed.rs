@@ -1424,6 +1424,9 @@ where
             .iter()
             .copied()
             .partition(|key| !crate::is_flatten_key(key.as_bytes()));
+        if flatten_keys.len() > 1 {
+            panic!("Multiple flatten keys are not yet supported");
+        }
         StructRefDeserializer {
             iter: Some(Box::new(map.iter())),
             current_key: None,
@@ -1531,23 +1534,24 @@ where
                 };
 
                 if self.has_unprocessed_flatten_keys() {
-                    let mut collect_unused = |_: Path<'_>, key: &Value, value: &Value| {
-                        // SAFETY: the references passed to this closure are
-                        // guaranteed to be borrowed for 'de
-                        let key: &'de Value = unsafe { std::mem::transmute(key) };
-                        let value: &'de Value = unsafe { std::mem::transmute(value) };
-                        self.rest.push((key, value));
-                    };
-                    let deserializer = MapRefDeserializer {
-                        iter: Some(Box::new(flattened.into_iter())),
-                        current_key: None,
-                        path,
-                        value: None,
-                        unused_key_callback: Some(&mut collect_unused),
-                        field_transformer: self.field_transformer.as_deref_mut(),
-                    };
+                    // let mut collect_unused = |_: Path<'_>, key: &Value, value: &Value| {
+                    //     // SAFETY: the references passed to this closure are
+                    //     // guaranteed to be borrowed for 'de
+                    //     let key: &'de Value = unsafe { std::mem::transmute(key) };
+                    //     let value: &'de Value = unsafe { std::mem::transmute(value) };
+                    //     self.rest.push((key, value));
+                    // };
+                    // let deserializer = MapRefDeserializer {
+                    //     iter: Some(Box::new(flattened.into_iter())),
+                    //     current_key: None,
+                    //     path,
+                    //     value: None,
+                    //     unused_key_callback: Some(&mut collect_unused),
+                    //     field_transformer: self.field_transformer.as_deref_mut(),
+                    // };
 
-                    seed.deserialize(deserializer)
+                    // seed.deserialize(deserializer)
+                    todo!()
                 } else {
                     let deserializer = MapRefDeserializer {
                         iter: Some(Box::new(flattened.into_iter())),

@@ -234,8 +234,7 @@ impl<T> From<ShouldBe<T>> for Option<T> {
     }
 }
 
-impl<T> From<ShouldBe<T>> for Result<T, Error>
-{
+impl<T> From<ShouldBe<T>> for Result<T, Error> {
     fn from(should_be: ShouldBe<T>) -> Self {
         match should_be {
             ShouldBe::AndIs(value) => Ok(value),
@@ -310,12 +309,13 @@ where
             ShouldBe::AndIs(value) => value.serialize(serializer),
             ShouldBe::ButIsnt { raw, .. } => {
                 if let Some(raw_value) = raw {
-                    // If we have a raw value, serialize it.
+                    // If we have a raw value, we can serialize it.
                     raw_value.serialize(serializer)
                 } else {
-                    // Otherwise, just serialize a unit which should hopefully
-                    // trigger an error on deserialization.
-                    serializer.serialize_unit_struct("ShouldBe::ButIsnt")
+                    // Otherwise, we have to raise an error.
+                    Err(serde::ser::Error::custom(
+                        "Cannot serialize `ShouldBe::ButIsnt` without a raw value",
+                    ))
                 }
             }
         }
@@ -389,9 +389,7 @@ where
 }
 
 pub(crate) fn is_expecting_should_be_then_reset() -> bool {
-    let res = EXPECTING_SHOULD_BE.with(|cell| *cell.borrow());
-    EXPECTING_SHOULD_BE.with(|cell| *cell.borrow_mut() = false);
-    res
+    EXPECTING_SHOULD_BE.with(|cell| cell.replace(false))
 }
 
 fn take_why_not() -> Option<(Value, Error)> {

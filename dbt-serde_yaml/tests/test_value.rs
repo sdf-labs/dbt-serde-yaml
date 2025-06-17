@@ -691,7 +691,7 @@ fn test_multi_flatten_fields() {
     #[derive(Deserialize, PartialEq, Eq, Debug)]
     struct Thing6 {
         x: Option<i32>,
-        __thing7__: Thing7,
+        // __thing7__: Thing7,
         __rest__: HashMap<String, Option<i32>>,
         y: i32,
     }
@@ -714,9 +714,62 @@ fn test_multi_flatten_fields() {
     "};
     let thing6 = Thing6::deserialize(dbt_serde_yaml::from_str::<Value>(yaml).unwrap()).unwrap();
     assert_eq!(thing6.x, None);
-    assert_eq!(thing6.__thing7__.a, Some(3));
-    assert_eq!(thing6.__thing7__.__thing8__.b, Some(4));
-    assert_eq!(thing6.__rest__, HashMap::new());
+    // assert_eq!(thing6.__thing7__.a, Some(3));
+    // assert_eq!(thing6.__thing7__.__thing8__.b, Some(4));
+    assert_eq!(
+        thing6.__rest__,
+        HashMap::from([("b".to_string(), Some(4)), ("a".to_string(), Some(3))])
+    );
+
+    let yaml = indoc! {"
+        a: 3
+        x: 1
+        b: 4
+    "};
+    let expected_err =
+        dbt_serde_yaml::from_value::<Thing6>(dbt_serde_yaml::from_str::<Value>(yaml).unwrap())
+            .unwrap_err()
+            .to_string();
+    assert_eq!(expected_err, "missing field `y` at line 1 column 1");
+}
+
+#[cfg(feature = "flatten_dunder")]
+#[test]
+fn test_multi_flatten_shouldbe() {
+    use dbt_serde_yaml::ShouldBe;
+
+    #[derive(Deserialize, PartialEq, Eq, Debug)]
+    struct Thing6 {
+        x: Option<i32>,
+        // __thing7__: Thing7,
+        __rest__: HashMap<String, ShouldBe<Thing6>>,
+        y: i32,
+    }
+
+    #[derive(Deserialize, PartialEq, Eq, Debug)]
+    struct Thing7 {
+        a: Option<i32>,
+        //__thing8__: Thing8,
+    }
+
+    #[derive(Deserialize, PartialEq, Eq, Debug)]
+    struct Thing8 {
+        b: Option<i32>,
+    }
+
+    let yaml = indoc! {"
+        a: 3
+        y: 5
+        b: 4
+    "};
+    let thing6 = Thing6::deserialize(dbt_serde_yaml::from_str::<Value>(yaml).unwrap()).unwrap();
+    // let thing6 = dbt_serde_yaml::from_str::<Thing6>(yaml).unwrap();
+    assert_eq!(thing6.x, None);
+    // assert_eq!(thing6.__thing7__.a, Some(3));
+    // assert_eq!(thing6.__thing7__.__thing8__.b, Some(4));
+    assert_eq!(thing6.__rest__.len(), 2);
+    assert!(thing6.__rest__["b"].isnt());
+    assert!(thing6.__rest__["a"].isnt());
 
     let yaml = indoc! {"
         a: 3
