@@ -1424,9 +1424,6 @@ where
             .iter()
             .copied()
             .partition(|key| !crate::is_flatten_key(key.as_bytes()));
-        if flatten_keys.len() > 1 {
-            panic!("Multiple flatten keys are not yet supported");
-        }
         StructRefDeserializer {
             iter: Some(Box::new(map.iter())),
             current_key: None,
@@ -1534,24 +1531,14 @@ where
                 };
 
                 if self.has_unprocessed_flatten_keys() {
-                    // let mut collect_unused = |_: Path<'_>, key: &Value, value: &Value| {
-                    //     // SAFETY: the references passed to this closure are
-                    //     // guaranteed to be borrowed for 'de
-                    //     let key: &'de Value = unsafe { std::mem::transmute(key) };
-                    //     let value: &'de Value = unsafe { std::mem::transmute(value) };
-                    //     self.rest.push((key, value));
-                    // };
-                    // let deserializer = MapRefDeserializer {
-                    //     iter: Some(Box::new(flattened.into_iter())),
-                    //     current_key: None,
-                    //     path,
-                    //     value: None,
-                    //     unused_key_callback: Some(&mut collect_unused),
-                    //     field_transformer: self.field_transformer.as_deref_mut(),
-                    // };
+                    let deserializer = FlattenRefDeserializer::new(
+                        Some(Box::new(flattened.into_iter())),
+                        path,
+                        &mut self.rest,
+                        self.field_transformer.as_deref_mut(),
+                    );
 
-                    // seed.deserialize(deserializer)
-                    todo!()
+                    seed.deserialize(deserializer)
                 } else {
                     let deserializer = MapRefDeserializer {
                         iter: Some(Box::new(flattened.into_iter())),
@@ -1603,5 +1590,110 @@ where
         bool i8 i16 i32 i64 u8 u16 u32 u64 f32 f64 char str string bytes
         byte_buf option unit unit_struct newtype_struct seq tuple tuple_struct
         map struct enum identifier
+    }
+}
+
+struct FlattenRefDeserializer<'p, 'u, 'r, 'de, F> {
+    iter: Option<Box<dyn Iterator<Item = (&'de Value, &'de Value)> + 'de>>,
+    path: Path<'p>,
+    remaining: &'r mut Vec<(&'de Value, &'de Value)>,
+    field_transformer: Option<&'u mut F>,
+}
+
+impl<'p, 'u, 'r, 'de, F> FlattenRefDeserializer<'p, 'u, 'r, 'de, F>
+where
+    F: for<'v> FnMut(&'v Value) -> TransformedResult,
+{
+    pub(crate) fn new(
+        iter: Option<Box<dyn Iterator<Item = (&'de Value, &'de Value)> + 'de>>,
+        current_path: Path<'p>,
+        remaining: &'r mut Vec<(&'de Value, &'de Value)>,
+        field_transformer: Option<&'u mut F>,
+    ) -> Self {
+        FlattenRefDeserializer {
+            iter,
+            path: current_path,
+            remaining,
+            field_transformer,
+        }
+    }
+}
+
+impl<'p, 'u, 'r, 'de, F> Deserializer<'de> for FlattenRefDeserializer<'p, 'u, 'r, 'de, F>
+where
+    F: for<'v> FnMut(&'v Value) -> TransformedResult,
+{
+    type Error = Error;
+
+    fn deserialize_any<V>(mut self, visitor: V) -> Result<V::Value, Error>
+    where
+        V: Visitor<'de>,
+    {
+        let mut collect_unused = |_: Path<'_>, key: &Value, value: &Value| {
+            // SAFETY: the references passed to this closure are
+            // guaranteed to be borrowed for 'de
+            let key: &'de Value = unsafe { std::mem::transmute(key) };
+            let value: &'de Value = unsafe { std::mem::transmute(value) };
+            self.remaining.push((key, value));
+        };
+        let deserializer = MapRefDeserializer {
+            iter: self.iter,
+            current_key: None,
+            path: self.path,
+            value: None,
+            unused_key_callback: Some(&mut collect_unused),
+            field_transformer: self.field_transformer.as_deref_mut(),
+        };
+        visitor.visit_map(deserializer)
+    }
+
+    fn deserialize_struct<V>(
+        self,
+        _name: &'static str,
+        fields: &'static [&'static str],
+        visitor: V,
+    ) -> Result<V::Value, Error>
+    where
+        V: Visitor<'de>,
+    {
+        let mut collect_unused = |_: Path<'_>, key: &Value, value: &Value| {
+            // SAFETY: the references passed to this closure are
+            // guaranteed to be borrowed for 'de
+            let key: &'de Value = unsafe { std::mem::transmute(key) };
+            let value: &'de Value = unsafe { std::mem::transmute(value) };
+            self.remaining.push((key, value));
+        };
+
+        let (normal_keys, flatten_keys): (Vec<_>, Vec<_>) = fields
+            .iter()
+            .copied()
+            .partition(|key| !crate::is_flatten_key(key.as_bytes()));
+        let deserializer = StructRefDeserializer {
+            iter: self.iter,
+            current_key: None,
+            path: self.path,
+            value: None,
+            normal_keys: normal_keys.into_iter().collect(),
+            flatten_keys,
+            unused_key_callback: Some(&mut collect_unused),
+            field_transformer: self.field_transformer,
+            rest: Vec::new(),
+            flatten_keys_done: 0,
+        };
+        visitor.visit_map(deserializer)
+    }
+
+    fn deserialize_ignored_any<V>(self, visitor: V) -> Result<V::Value, Error>
+    where
+        V: Visitor<'de>,
+    {
+        drop(self);
+        visitor.visit_unit()
+    }
+
+    forward_to_deserialize_any! {
+        bool i8 i16 i32 i64 u8 u16 u32 u64 f32 f64 char str string bytes
+        byte_buf option unit unit_struct newtype_struct seq tuple tuple_struct
+        map enum identifier
     }
 }

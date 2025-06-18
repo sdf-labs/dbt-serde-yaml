@@ -648,25 +648,26 @@ fn test_flatten() {
 fn test_verbatim_flatten_nested() {
     #[derive(Deserialize, PartialEq, Eq, Debug)]
     struct Thing4 {
-        x: Option<i32>,
-        __thing5__: Verbatim<Thing5>,
+        x: Verbatim<Option<i32>>,
+        __thing5__: Thing5,
     }
 
     #[derive(Deserialize, PartialEq, Eq, Debug)]
     struct Thing5 {
-        a: Option<i32>,
-        __rest__: HashMap<String, Option<i32>>,
+        a: Verbatim<Option<i32>>,
+        __rest__: HashMap<String, Thing4>,
     }
 
     let value = dbt_serde_yaml::from_str::<Value>(indoc! {"
         a: 3
         x: 1
-        b: 4
+        b:
+          x: 2
     "})
     .unwrap();
     let (thing4, unused_keys) = deserialize_value::<Thing4>(value, |v| {
         if v.is_i64() {
-            Ok(Some(Value::null()))
+            panic!("transformer should not be called for i64 values: {:?}", v);
         } else {
             Ok(None)
         }
@@ -674,15 +675,8 @@ fn test_verbatim_flatten_nested() {
     if !unused_keys.is_empty() {
         panic!("unexpected unused keys: {:?}", unused_keys);
     }
-    assert_eq!(thing4.x, None);
-    assert_eq!(
-        thing4.__thing5__,
-        Thing5 {
-            a: Some(3),
-            __rest__: HashMap::from([("b".to_string(), Some(4))]),
-        }
-        .into()
-    );
+    assert_eq!(*thing4.x, Some(1));
+    assert_eq!(*thing4.__thing5__.a, Some(3));
 }
 
 #[cfg(feature = "flatten_dunder")]
@@ -691,7 +685,7 @@ fn test_multi_flatten_fields() {
     #[derive(Deserialize, PartialEq, Eq, Debug)]
     struct Thing6 {
         x: Option<i32>,
-        // __thing7__: Thing7,
+        __thing7__: Thing7,
         __rest__: HashMap<String, Option<i32>>,
         y: i32,
     }
@@ -711,15 +705,19 @@ fn test_multi_flatten_fields() {
         a: 3
         y: 5
         b: 4
+        c: 1
     "};
-    let thing6 = Thing6::deserialize(dbt_serde_yaml::from_str::<Value>(yaml).unwrap()).unwrap();
+    let (thing6, unused_keys) =
+        deserialize_value::<Thing6>(dbt_serde_yaml::from_str::<Value>(yaml).unwrap(), |_| {
+            Ok(None)
+        });
+    if !unused_keys.is_empty() {
+        panic!("unexpected unused keys: {:?}", unused_keys);
+    }
     assert_eq!(thing6.x, None);
-    // assert_eq!(thing6.__thing7__.a, Some(3));
-    // assert_eq!(thing6.__thing7__.__thing8__.b, Some(4));
-    assert_eq!(
-        thing6.__rest__,
-        HashMap::from([("b".to_string(), Some(4)), ("a".to_string(), Some(3))])
-    );
+    assert_eq!(thing6.__thing7__.a, Some(3));
+    assert_eq!(thing6.__thing7__.__thing8__.b, Some(4));
+    assert_eq!(thing6.__rest__, HashMap::from([("c".to_string(), Some(1))]));
 
     let yaml = indoc! {"
         a: 3
@@ -741,35 +739,53 @@ fn test_multi_flatten_shouldbe() {
     #[derive(Deserialize, PartialEq, Eq, Debug)]
     struct Thing6 {
         x: Option<i32>,
-        // __thing7__: Thing7,
+        __thing7__: Thing7,
         __rest__: HashMap<String, ShouldBe<Thing6>>,
-        y: i32,
+        y: Verbatim<String>,
     }
 
     #[derive(Deserialize, PartialEq, Eq, Debug)]
     struct Thing7 {
         a: Option<i32>,
-        //__thing8__: Thing8,
+        __thing8__: Thing8,
     }
 
     #[derive(Deserialize, PartialEq, Eq, Debug)]
     struct Thing8 {
-        b: Option<i32>,
+        c: Option<i32>,
     }
 
     let yaml = indoc! {"
         a: 3
-        y: 5
-        b: 4
+        y: '5'
+        b:
+          x: 4
+          y: 'a string'
+        bb: 1
     "};
-    let thing6 = Thing6::deserialize(dbt_serde_yaml::from_str::<Value>(yaml).unwrap()).unwrap();
-    // let thing6 = dbt_serde_yaml::from_str::<Thing6>(yaml).unwrap();
+    let (thing6, unused_keys) =
+        deserialize_value::<Thing6>(dbt_serde_yaml::from_str::<Value>(yaml).unwrap(), |v| {
+            if v.is_string() {
+                panic!(
+                    "transformer should not be called for string values: {:?}",
+                    v
+                );
+            } else {
+                Ok(None)
+            }
+        });
+    if !unused_keys.is_empty() {
+        panic!("unexpected unused keys: {:?}", unused_keys);
+    }
     assert_eq!(thing6.x, None);
-    // assert_eq!(thing6.__thing7__.a, Some(3));
-    // assert_eq!(thing6.__thing7__.__thing8__.b, Some(4));
+    assert_eq!(thing6.__thing7__.a, Some(3));
+    assert_eq!(thing6.__thing7__.__thing8__.c, None);
     assert_eq!(thing6.__rest__.len(), 2);
-    assert!(thing6.__rest__["b"].isnt());
-    assert!(thing6.__rest__["a"].isnt());
+    assert!(thing6.__rest__["bb"].isnt());
+    assert!(thing6.__rest__["b"].is());
+    let inner = thing6.__rest__["b"].as_ref().unwrap();
+    assert_eq!(inner.x, Some(4));
+    assert_eq!(*inner.y, "a string".to_string());
 
     let yaml = indoc! {"
         a: 3
