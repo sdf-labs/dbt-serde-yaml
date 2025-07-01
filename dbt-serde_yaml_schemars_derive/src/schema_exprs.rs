@@ -288,13 +288,40 @@ fn expr_for_adjacent_tagged_enum<'a>(
                 enum_values: Some(vec![#name.into()]),
             });
 
-            let set_additional_properties = if deny_unknown_fields {
-                quote! {
-                    additional_properties: Some(Box::new(false.into())),
-                }
-            } else {
-                TokenStream::new()
-            };
+            // Check if variant has an __additional_properties__ field
+            let additional_properties_field = variant
+                .fields
+                .iter()
+                .find(|f| f.name() == "__additional_properties__");
+
+            let set_additional_properties =
+                if let Some(additional_field) = additional_properties_field {
+                    // For BTreeMap<String, T> or HashMap<String, T>, we want to use T as the additional_properties schema
+                    // Extract the value type from Map types
+                    let (value_ty, type_def) = extract_map_value_type(additional_field);
+                    let generator = quote!(generator);
+                    let mut schema_expr = quote_spanned! {value_ty.span()=>
+                        #generator.subschema_for::<#value_ty>()
+                    };
+
+                    prepend_type_def(type_def.clone(), &mut schema_expr);
+                    additional_field
+                        .validation_attrs
+                        .apply_to_schema(&mut schema_expr);
+
+                    quote! {
+                        {
+                            #type_def
+                            additional_properties: Some(Box::new(#schema_expr)),
+                        }
+                    }
+                } else if deny_unknown_fields {
+                    quote! {
+                        additional_properties: Some(Box::new(false.into())),
+                    }
+                } else {
+                    TokenStream::new()
+                };
 
             let mut outer_schema = schema_object(quote! {
                 instance_type: Some(schemars::schema::InstanceType::Object.into()),
@@ -431,10 +458,20 @@ fn expr_for_struct(
     default: &SerdeDefault,
     deny_unknown_fields: bool,
 ) -> TokenStream {
-    let (flattened_fields, property_fields): (Vec<_>, Vec<_>) = fields
+    let filtered_fields: Vec<_> = fields
         .iter()
         .filter(|f| !f.serde_attrs.skip_deserializing() || !f.serde_attrs.skip_serializing())
-        .partition(|f| f.is_flatten());
+        .collect();
+
+    // Partition fields into flattened and property fields
+    let (flattened_fields, property_fields): (Vec<_>, Vec<_>) =
+        filtered_fields.into_iter().partition(|f| f.is_flatten());
+
+    // Look for __additional_properties__ field among flattened fields
+    let additional_properties_field = flattened_fields
+        .iter()
+        .find(|f| f.name() == "__additional_properties__")
+        .copied();
 
     let set_container_default = match default {
         SerdeDefault::None => None,
@@ -485,6 +522,11 @@ fn expr_for_struct(
 
     let flattens: Vec<_> = flattened_fields
         .into_iter()
+        .filter(|field| {
+            // Exclude __additional_properties__ field from normal flatten processing
+            // since we handle it specially for additional_properties
+            field.name() != "__additional_properties__"
+        })
         .map(|field| {
             let (ty, type_def) = type_for_field_schema(field);
 
@@ -500,7 +542,29 @@ fn expr_for_struct(
         })
         .collect();
 
-    let set_additional_properties = if deny_unknown_fields {
+    // Handle additional_properties based on __additional_properties__ field
+    let set_additional_properties = if let Some(additional_field) = additional_properties_field {
+        // For BTreeMap<String, T> or HashMap<String, T>, we want to use T as the additional_properties schema
+        // Extract the value type from Map types
+        let (value_ty, type_def) = extract_map_value_type(additional_field);
+        let generator = quote!(generator);
+        let mut schema_expr = quote_spanned! {value_ty.span()=>
+            #generator.subschema_for::<#value_ty>()
+        };
+
+        prepend_type_def(type_def.clone(), &mut schema_expr);
+        additional_field
+            .validation_attrs
+            .apply_to_schema(&mut schema_expr);
+
+        quote! {
+            {
+                #type_def
+                object_validation.additional_properties = Some(Box::new(#schema_expr));
+            }
+        }
+    } else if deny_unknown_fields {
+        // Fallback to the original logic if no __additional_properties__ field exists
         quote! {
             object_validation.additional_properties = Some(Box::new(false.into()));
         }
@@ -597,4 +661,32 @@ fn prepend_type_def(type_def: Option<TokenStream>, schema_expr: &mut TokenStream
             }
         }
     }
+}
+
+/// Extract the value type from Map types like BTreeMap<String, T> or HashMap<String, T>
+/// Returns the T type and any associated type definitions
+fn extract_map_value_type(field: &Field) -> (syn::Type, Option<TokenStream>) {
+    let (full_ty, type_def) = type_for_field_schema(field);
+
+    // Try to extract the value type from common map types
+    if let syn::Type::Path(type_path) = &full_ty {
+        if let Some(segment) = type_path.path.segments.last() {
+            if segment.ident == "BTreeMap" || segment.ident == "HashMap" {
+                if let syn::PathArguments::AngleBracketed(args) = &segment.arguments {
+                    if args.args.len() == 2 {
+                        if let (
+                            syn::GenericArgument::Type(_key_ty),
+                            syn::GenericArgument::Type(value_ty),
+                        ) = (&args.args[0], &args.args[1])
+                        {
+                            return (value_ty.clone(), type_def);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Fall back to the full type if we can't extract the value type
+    (full_ty, type_def)
 }
