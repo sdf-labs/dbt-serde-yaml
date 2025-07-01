@@ -493,21 +493,10 @@ fn expr_for_struct(
     let (flattened_fields, property_fields): (Vec<_>, Vec<_>) =
         filtered_fields.into_iter().partition(|f| f.is_flatten());
 
-    // Look for __additional_properties__ field among flattened fields
-    println!("Debug: flattened_fields count: {}", flattened_fields.len());
-    for field in &flattened_fields {
-        println!("Debug: flattened field name: '{}'", field.name());
-    }
-
     let additional_properties_field = flattened_fields
         .iter()
         .find(|f| f.name() == "__additional_properties__")
         .copied();
-
-    println!(
-        "Debug: found additional_properties_field: {}",
-        additional_properties_field.is_some()
-    );
 
     let set_container_default = match default {
         SerdeDefault::None => None,
@@ -579,10 +568,7 @@ fn expr_for_struct(
         .collect();
 
     // Handle additional_properties based on __additional_properties__ field
-    println!("Debug: deny_unknown_fields = {}", deny_unknown_fields);
     let set_additional_properties = if let Some(additional_field) = additional_properties_field {
-        println!("Debug: Using __additional_properties__ field for schema");
-        println!("Debug: Field type: {:#?}", additional_field.ty);
         // For BTreeMap<String, T> or HashMap<String, T>, we want to use T as the additional_properties schema
         // Extract the value type from Map types
         let (value_ty, type_def) = extract_map_value_type(additional_field);
@@ -599,23 +585,16 @@ fn expr_for_struct(
         quote! {
             {
                 #type_def
-                println!("Debug: Setting additional_properties to custom schema");
                 object_validation.additional_properties = Some(Box::new(#schema_expr));
-                println!("Debug: additional_properties set successfully");
             }
         }
     } else if deny_unknown_fields {
-        println!("Debug: Using deny_unknown_fields logic (setting to false)");
         // Fallback to the original logic if no __additional_properties__ field exists
         quote! {
             object_validation.additional_properties = Some(Box::new(false.into()));
         }
     } else {
-        println!("Debug: No additional_properties handling - setting to true by default");
-        // Test: explicitly set additional_properties to true instead of leaving it unset
-        quote! {
-            object_validation.additional_properties = Some(Box::new(true.into()));
-        }
+        TokenStream::new()
     };
 
     quote! {
