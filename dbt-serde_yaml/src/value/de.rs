@@ -376,16 +376,14 @@ fn reset_is_deserializing_value() {
 
 fn store_deserializer_state<U, F>(
     value: Option<Value>,
-    path: Path<'_>,
+    _path: Path<'_>,
     unused_key_callback: Option<&mut U>,
     field_transformer: Option<&mut F>,
 ) where
     U: for<'p, 'v> FnMut(Path<'p>, &'v Value, &'v Value),
     F: for<'v> FnMut(&'v Value) -> TransformedResult,
 {
-    #![allow(clippy::missing_transmute_annotations)]
     THE_VALUE.with(|cell| cell.set(value));
-    THE_PATH.with(|cell| cell.set(unsafe { std::mem::transmute(path) }));
     UNUSED_KEY_CALLBACK.with(|cell| {
         cell.set(unused_key_callback.map(|cb| unsafe {
             std::mem::transmute(
