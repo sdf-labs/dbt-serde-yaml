@@ -278,10 +278,19 @@ where
     F: FnMut(Path<'_>, &Value, &Value) -> DuplicateKey,
 {
     let start = spanned::get_marker();
-    let val = deserializer.deserialize_any(ValueVisitor {
+    set_is_deserializing_value();
+    let res = deserializer.deserialize_any(ValueVisitor {
         callback: &mut duplicate_key_callback,
         path: Path::Root,
-    })?;
+    });
+    reset_is_deserializing_value();
+    // Fast path: if the deserializer has returned a value through the side
+    // channel, then we use it and ignore the result of the deserializer.
+    if let Some(value) = THE_VALUE.with(|cell| cell.take()) {
+        return Ok(value);
+    }
+
+    let val = res?;
     let span = Span::from(start..spanned::get_marker());
 
     #[cfg(feature = "filename")]
@@ -295,17 +304,7 @@ impl<'de> Deserialize<'de> for Value {
     where
         D: Deserializer<'de>,
     {
-        let start = spanned::get_marker();
-        let val = deserializer.deserialize_any(ValueVisitor {
-            callback: &mut |_, _, _| DuplicateKey::Error,
-            path: Path::Root,
-        })?;
-        let span = Span::from(start..spanned::get_marker());
-
-        #[cfg(feature = "filename")]
-        let span = span.maybe_capture_filename();
-
-        Ok(val.with_span(span))
+        deserialize(deserializer, |_, _, _| DuplicateKey::Error)
     }
 }
 
@@ -332,6 +331,7 @@ impl Value {
     where
         V: Visitor<'de>,
     {
+        reset_is_deserializing_value();
         let span = self.span();
         self.broadcast_end_mark();
         maybe_why_not!(
@@ -361,4 +361,57 @@ impl Value {
             Value::Tagged(..) => Unexpected::Enum,
         }
     }
+}
+
+fn is_deserializing_value_then_reset() -> bool {
+    IS_DESERIALIZING_VALUE.with(|cell| cell.replace(false))
+}
+
+fn set_is_deserializing_value() {
+    IS_DESERIALIZING_VALUE.with(|cell| cell.set(true));
+}
+fn reset_is_deserializing_value() {
+    IS_DESERIALIZING_VALUE.with(|cell| cell.set(false));
+}
+
+fn store_deserializer_state<U, F>(
+    value: Option<Value>,
+    _path: Path<'_>,
+    unused_key_callback: Option<&mut U>,
+    field_transformer: Option<&mut F>,
+) where
+    U: for<'p, 'v> FnMut(Path<'p>, &'v Value, &'v Value),
+    F: for<'v> FnMut(&'v Value) -> TransformedResult,
+{
+    THE_VALUE.with(|cell| cell.set(value));
+    UNUSED_KEY_CALLBACK.with(|cell| {
+        cell.set(unused_key_callback.map(|cb| unsafe {
+            std::mem::transmute(
+                Box::new(cb) as Box<dyn for<'p, 'v> FnMut(Path<'p>, &'v Value, &'v Value)>
+            )
+        }))
+    });
+    FIELD_TRANSFORMER.with(|cell| {
+        cell.set(field_transformer.map(|cb| unsafe {
+            std::mem::transmute(
+                Box::new(cb) as Box<dyn for<'v> FnMut(&'v Value) -> TransformedResult>
+            )
+        }))
+    });
+}
+
+type UnusedKeyCallback = Box<dyn for<'p, 'v> FnMut(Path<'p>, &'v Value, &'v Value)>;
+type FieldTransformer = Box<dyn for<'v> FnMut(&'v Value) -> TransformedResult>;
+
+thread_local! {
+    static IS_DESERIALIZING_VALUE: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+
+    static THE_VALUE: std::cell::Cell<Option<Value>> = const { std::cell::Cell::new(None) };
+    static THE_PATH: std::cell::Cell<Path<'static>> = const { std::cell::Cell::new(Path::Root) };
+    static UNUSED_KEY_CALLBACK: std::cell::Cell<Option<UnusedKeyCallback>> = std::cell::Cell::new(
+        None
+    );
+    static FIELD_TRANSFORMER: std::cell::Cell<Option<FieldTransformer>> = std::cell::Cell::new(
+        None
+    );
 }

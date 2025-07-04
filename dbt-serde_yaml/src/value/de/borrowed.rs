@@ -10,7 +10,13 @@ use serde::{
 
 use crate::{
     error,
-    value::{de::ValueDeserializer, tagged},
+    value::{
+        de::{
+            is_deserializing_value_then_reset, reset_is_deserializing_value,
+            store_deserializer_state, ValueDeserializer,
+        },
+        tagged,
+    },
     Error, Mapping, Path, Sequence, Value,
 };
 
@@ -438,6 +444,16 @@ where
 
         let span = self.value.span();
         self.value.broadcast_end_mark();
+        if is_deserializing_value_then_reset() {
+            store_deserializer_state(
+                Some(self.value.clone()),
+                self.path,
+                self.unused_key_callback,
+                self.field_transformer,
+            );
+            return Err(Error::custom("Value deserialized via fast path"));
+        }
+
         maybe_why_not!(
             self.value,
             match self.value {
@@ -1166,6 +1182,8 @@ where
     where
         V: Visitor<'de>,
     {
+        reset_is_deserializing_value();
+
         let len = self.iter.len();
         if len == 0 {
             visitor.visit_unit()
@@ -1351,6 +1369,7 @@ where
     where
         V: Visitor<'de>,
     {
+        reset_is_deserializing_value();
         visitor.visit_map(self)
     }
 
@@ -1575,6 +1594,7 @@ where
     where
         V: Visitor<'de>,
     {
+        reset_is_deserializing_value();
         visitor.visit_map(self)
     }
 
@@ -1629,6 +1649,7 @@ where
     where
         V: Visitor<'de>,
     {
+        reset_is_deserializing_value();
         let mut collect_unused = |_: Path<'_>, key: &Value, value: &Value| {
             // SAFETY: the references passed to this closure are
             // guaranteed to be borrowed for 'de

@@ -178,6 +178,8 @@ pub use crate::shouldbe::{ShouldBe, WhyNot};
 pub use crate::value::{from_value, to_value, Index, Number, Sequence, Value};
 #[doc(inline)]
 pub use crate::verbatim::Verbatim;
+#[doc(inline)]
+pub use crate::verbatim::VerbatimLegacy;
 
 #[doc(inline)]
 pub use crate::mapping::Mapping;
