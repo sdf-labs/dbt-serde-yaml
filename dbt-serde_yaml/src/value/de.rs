@@ -1,5 +1,5 @@
 use crate::mapping::{DuplicateKey, MappingVisitor};
-use crate::path::Path;
+use crate::path::{OwnedPath, Path};
 use crate::value::de::borrowed::ValueRefDeserializer;
 use crate::value::tagged::TagStringVisitor;
 use crate::value::TaggedValue;
@@ -283,11 +283,13 @@ where
         callback: &mut duplicate_key_callback,
         path: Path::Root,
     });
+    let maybe_state = load_deserializer_state();
     reset_is_deserializing_value();
+
     // Fast path: if the deserializer has returned a value through the side
     // channel, then we use it and ignore the result of the deserializer.
-    if let Some(value) = THE_VALUE.with(|cell| cell.take()) {
-        return Ok(value);
+    if let Some(state) = maybe_state {
+        return Ok(state.value);
     }
 
     let val = res?;
@@ -331,7 +333,6 @@ impl Value {
     where
         V: Visitor<'de>,
     {
-        reset_is_deserializing_value();
         let span = self.span();
         self.broadcast_end_mark();
         maybe_why_not!(
@@ -364,34 +365,46 @@ impl Value {
 }
 
 fn is_deserializing_value_then_reset() -> bool {
-    IS_DESERIALIZING_VALUE.with(|cell| cell.replace(false))
+    clear_deserializer_state();
+    private::IS_DESERIALIZING_VALUE.with(|cell| cell.replace(false))
 }
 
 fn set_is_deserializing_value() {
-    IS_DESERIALIZING_VALUE.with(|cell| cell.set(true));
-}
-fn reset_is_deserializing_value() {
-    IS_DESERIALIZING_VALUE.with(|cell| cell.set(false));
+    clear_deserializer_state();
+    private::IS_DESERIALIZING_VALUE.with(|cell| cell.set(true));
 }
 
-fn store_deserializer_state<U, F>(
+fn reset_is_deserializing_value() {
+    clear_deserializer_state();
+    private::IS_DESERIALIZING_VALUE.with(|cell| cell.set(false));
+}
+
+fn clear_deserializer_state() {
+    private::THE_VALUE.with(|cell| cell.set(None));
+    private::THE_PATH.with(|cell| cell.set(None));
+    private::UNUSED_KEY_CALLBACK.with(|cell| cell.set(None));
+    private::FIELD_TRANSFORMER.with(|cell| cell.set(None));
+}
+
+fn save_deserializer_state<U, F>(
     value: Option<Value>,
-    _path: Path<'_>,
+    path: Path<'_>,
     unused_key_callback: Option<&mut U>,
     field_transformer: Option<&mut F>,
 ) where
     U: for<'p, 'v> FnMut(Path<'p>, &'v Value, &'v Value),
     F: for<'v> FnMut(&'v Value) -> TransformedResult,
 {
-    THE_VALUE.with(|cell| cell.set(value));
-    UNUSED_KEY_CALLBACK.with(|cell| {
+    private::THE_VALUE.with(|cell| cell.set(value));
+    private::THE_PATH.with(|cell| cell.set(Some(path.to_owned_path())));
+    private::UNUSED_KEY_CALLBACK.with(|cell| {
         cell.set(unused_key_callback.map(|cb| unsafe {
             std::mem::transmute(
                 Box::new(cb) as Box<dyn for<'p, 'v> FnMut(Path<'p>, &'v Value, &'v Value)>
             )
         }))
     });
-    FIELD_TRANSFORMER.with(|cell| {
+    private::FIELD_TRANSFORMER.with(|cell| {
         cell.set(field_transformer.map(|cb| unsafe {
             std::mem::transmute(
                 Box::new(cb) as Box<dyn for<'v> FnMut(&'v Value) -> TransformedResult>
@@ -400,18 +413,98 @@ fn store_deserializer_state<U, F>(
     });
 }
 
-type UnusedKeyCallback = Box<dyn for<'p, 'v> FnMut(Path<'p>, &'v Value, &'v Value)>;
-type FieldTransformer = Box<dyn for<'v> FnMut(&'v Value) -> TransformedResult>;
+/// Consumes a [Deserializer] and converts it into a [DeserializerState], which
+/// can used to construct reusable deserializers for deserializing untagged enum
+/// variants.
+pub fn extract_reusable_deserializer_state<'de, D>(
+    deserializer: D,
+) -> Result<DeserializerState, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    set_is_deserializing_value();
+    let res = deserializer.deserialize_any(ValueVisitor {
+        callback: &mut |_, _, _| DuplicateKey::Error,
+        path: Path::Root,
+    });
+    let maybe_state = load_deserializer_state();
+    reset_is_deserializing_value();
 
-thread_local! {
-    static IS_DESERIALIZING_VALUE: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+    if let Some(state) = maybe_state {
+        Ok(state)
+    } else {
+        let val = res?;
+        Ok(DeserializerState {
+            value: val,
+            path: OwnedPath::Root,
+            unused_key_callback: None,
+            field_transformer: None,
+        })
+    }
+}
 
-    static THE_VALUE: std::cell::Cell<Option<Value>> = const { std::cell::Cell::new(None) };
-    static THE_PATH: std::cell::Cell<Path<'static>> = const { std::cell::Cell::new(Path::Root) };
-    static UNUSED_KEY_CALLBACK: std::cell::Cell<Option<UnusedKeyCallback>> = std::cell::Cell::new(
-        None
-    );
-    static FIELD_TRANSFORMER: std::cell::Cell<Option<FieldTransformer>> = std::cell::Cell::new(
-        None
-    );
+pub type UnusedKeyCallback = Box<dyn for<'p, 'v> FnMut(Path<'p>, &'v Value, &'v Value)>;
+pub type FieldTransformer = Box<dyn for<'v> FnMut(&'v Value) -> TransformedResult>;
+
+pub struct DeserializerState {
+    value: Value,
+    path: OwnedPath,
+    pub unused_key_callback: Option<UnusedKeyCallback>,
+    field_transformer: Option<FieldTransformer>,
+}
+
+impl DeserializerState {
+    pub fn get_deserializer<'de, 'u, U>(
+        &'de mut self,
+        unused_key_callback: Option<&'u mut U>,
+    ) -> ValueRefDeserializer<'de, 'u, 'de, U, FieldTransformer>
+    where
+        'de: 'u,
+        U: FnMut(Path<'_>, &Value, &Value),
+    {
+        let field_transformer = self.field_transformer.as_mut();
+
+        ValueRefDeserializer::new_with(
+            &self.value,
+            *self.path.as_path(),
+            unused_key_callback,
+            field_transformer,
+        )
+    }
+}
+
+fn load_deserializer_state() -> Option<DeserializerState> {
+    let Some(value) = private::THE_VALUE.with(|cell| cell.take()) else {
+        return None;
+    };
+
+    let path = private::THE_PATH
+        .with(|cell| cell.take())
+        .unwrap_or(OwnedPath::Root);
+    let unused_key_callback = private::UNUSED_KEY_CALLBACK.with(|cell| cell.take());
+    let field_transformer = private::FIELD_TRANSFORMER.with(|cell| cell.take());
+
+    Some(DeserializerState {
+        value,
+        path,
+        unused_key_callback,
+        field_transformer,
+    })
+}
+
+mod private {
+    use crate::{path::OwnedPath, Value};
+
+    thread_local! {
+        pub static IS_DESERIALIZING_VALUE: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+
+        pub static THE_VALUE: std::cell::Cell<Option<Value>> = const { std::cell::Cell::new(None) };
+        pub static THE_PATH: std::cell::Cell<Option<OwnedPath>> = const { std::cell::Cell::new(None) };
+        pub static UNUSED_KEY_CALLBACK: std::cell::Cell<Option<super::UnusedKeyCallback>> = std::cell::Cell::new(
+            None
+        );
+        pub static FIELD_TRANSFORMER: std::cell::Cell<Option<super::FieldTransformer>> = std::cell::Cell::new(
+            None
+        );
+    }
 }
