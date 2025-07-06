@@ -6,8 +6,9 @@
 
 use std::collections::HashMap;
 
-use dbt_serde_yaml::Mapping;
+use dbt_serde_yaml::value::extract_reusable_deserializer_state;
 use dbt_serde_yaml::{value::TransformedResult, Number, Value, Verbatim};
+use dbt_serde_yaml::{Mapping, Path};
 use indoc::indoc;
 use serde::de::{DeserializeOwned, IntoDeserializer};
 use serde::Deserialize as _;
@@ -903,5 +904,127 @@ properties:
     type: integer
     format: int32
 "}
+    );
+}
+
+#[test]
+fn test_untagged_enum() {
+    #[derive(Deserialize, PartialEq, Eq, Debug)]
+    struct Thing {
+        a: Verbatim<i32>,
+        b: Verbatim<Option<i32>>,
+        c: bool,
+    }
+
+    #[allow(clippy::large_enum_variant)]
+    #[derive(PartialEq, Eq, Debug)]
+    // #[serde(untagged)]
+    enum Untagged {
+        String(String),
+        Number(i32),
+        Thing(Thing),
+    }
+
+    impl<'de> serde::Deserialize<'de> for Untagged {
+        fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+        where
+            D: serde::Deserializer<'de>,
+        {
+            let mut state = extract_reusable_deserializer_state(deserializer)?;
+            let unused_key_callback = state.take_unused_key_callback();
+            let mut unused_keys = vec![];
+
+            let string = {
+                let mut collect_unused_keys = |path: Path<'_>, key: &Value, value: &Value| {
+                    unused_keys.push((path.to_owned_path(), key.clone(), value.clone()));
+                };
+
+                String::deserialize(state.get_deserializer(Some(&mut collect_unused_keys)))
+            };
+            if let Ok(s) = string {
+                if let Some(mut callback) = unused_key_callback {
+                    for (path, key, value) in unused_keys.iter() {
+                        callback(*path.as_path(), key, value);
+                    }
+                }
+                return Ok(Untagged::String(s));
+            }
+
+            unused_keys.clear();
+            let number = {
+                let mut collect_unused_keys = |path: Path<'_>, key: &Value, value: &Value| {
+                    unused_keys.push((path.to_owned_path(), key.clone(), value.clone()));
+                };
+                i32::deserialize(state.get_deserializer(Some(&mut collect_unused_keys)))
+            };
+            if let Ok(n) = number {
+                if let Some(mut callback) = unused_key_callback {
+                    for (path, key, value) in unused_keys.iter() {
+                        callback(*path.as_path(), key, value);
+                    }
+                }
+                return Ok(Untagged::Number(n));
+            }
+
+            unused_keys.clear();
+            let thing = {
+                let mut collect_unused_keys = |path: Path<'_>, key: &Value, value: &Value| {
+                    unused_keys.push((path.to_owned_path(), key.clone(), value.clone()));
+                };
+                Thing::deserialize(state.get_deserializer(Some(&mut collect_unused_keys)))
+            };
+            if let Ok(t) = thing {
+                if let Some(mut callback) = unused_key_callback {
+                    for (path, key, value) in unused_keys.iter() {
+                        callback(*path.as_path(), key, value);
+                    }
+                }
+                return Ok(Untagged::Thing(t));
+            }
+
+            Err(serde::de::Error::custom(
+                "Failed to deserialize Untagged enum",
+            ))
+        }
+    }
+
+    let value = dbt_serde_yaml::from_str::<Value>("42").unwrap();
+    let untagged = deserialize_value::<Untagged>(value, |_| Ok(None)).0;
+    assert_eq!(untagged, Untagged::Number(42));
+
+    let value = dbt_serde_yaml::from_str::<Value>("'hello'").unwrap();
+    let untagged = deserialize_value::<Untagged>(value, |_| Ok(None)).0;
+    assert_eq!(untagged, Untagged::String("hello".to_string()));
+
+    let yaml = indoc! {"
+        a: 3
+        y: '5'
+        c: false
+    "};
+    let value = dbt_serde_yaml::from_str::<Value>(yaml).unwrap();
+    let (untagged, unused_keys) = deserialize_value::<Untagged>(value, |v| {
+        if v.is_u64() {
+            Ok(Some(Value::from(v.as_u64().unwrap() + 100)))
+        } else if v.is_bool() {
+            Ok(Some(Value::from(true)))
+        } else {
+            Ok(None)
+        }
+    });
+    assert_eq!(
+        unused_keys,
+        vec![(
+            "y".to_string(),
+            Value::string("y".to_string()),
+            Value::string("5".to_string())
+        )]
+    );
+    assert_eq!(
+        untagged,
+        Untagged::Thing(Thing {
+            a: Verbatim::new(Value::from(3)),
+            b: Verbatim::new_missing(),
+            c: true,
+        })
     );
 }

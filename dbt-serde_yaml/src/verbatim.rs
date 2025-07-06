@@ -160,7 +160,6 @@ impl<'de> Deserializer<'de> for MissingFieldDeserializer {
         visitor.visit_none()
     }
 
-    // Other methods are not needed for this deserializer.
     serde::forward_to_deserialize_any! {
         bool i8 i16 i32 i64 u8 u16 u32 u64 f32 f64 char str string bytes byte_buf
         unit unit_struct newtype_struct seq tuple tuple_struct map struct
@@ -184,7 +183,7 @@ where
             Ok(value) => Ok(Verbatim::new(value)),
             Err(err) => {
                 let msg = err.to_string();
-                // missing field errors must be handled specially, as dictated by T:
+                // missing field errors must be handled as dictated by T:
                 if msg.starts_with("missing field ")
                     && T::deserialize(MissingFieldDeserializer).is_ok()
                 {
@@ -192,7 +191,7 @@ where
                     // retain the missing field in the Verbatim value:
                     Ok(Verbatim::new_missing())
                 } else {
-                    // Otherwise, we propagate the error.
+                    // Otherwise, we propagate the error:
                     Err(err)
                 }
             }
@@ -233,6 +232,8 @@ where
         T::_schemars_private_is_option()
     }
 }
+
+////////////////////////////////////////////////////////////////////////
 
 /// A wrapper type that protects the inner value from being transformed by the
 /// `field_transformer` when deserialized by the `Value::into_typed` method.

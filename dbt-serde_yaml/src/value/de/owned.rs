@@ -13,7 +13,7 @@ use crate::{
     value::{
         de::{
             borrowed::ValueRefDeserializer, is_deserializing_value_then_reset,
-            reset_is_deserializing_value, store_deserializer_state,
+            reset_is_deserializing_value, save_deserializer_state,
         },
         tagged,
     },
@@ -452,7 +452,7 @@ where
         let span = self.value.span();
         self.value.broadcast_end_mark();
         if is_deserializing_value_then_reset() {
-            store_deserializer_state(
+            save_deserializer_state(
                 Some(self.value),
                 self.path,
                 self.unused_key_callback,
