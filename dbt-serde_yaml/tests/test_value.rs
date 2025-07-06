@@ -916,6 +916,7 @@ fn test_untagged_enum() {
         c: bool,
     }
 
+    #[allow(clippy::large_enum_variant)]
     #[derive(PartialEq, Eq, Debug)]
     // #[serde(untagged)]
     enum Untagged {
@@ -930,7 +931,7 @@ fn test_untagged_enum() {
             D: serde::Deserializer<'de>,
         {
             let mut state = extract_reusable_deserializer_state(deserializer)?;
-            let unused_key_callback = state.unused_key_callback.take();
+            let unused_key_callback = state.take_unused_key_callback();
             let mut unused_keys = vec![];
 
             let string = {
@@ -943,7 +944,7 @@ fn test_untagged_enum() {
             if let Ok(s) = string {
                 if let Some(mut callback) = unused_key_callback {
                     for (path, key, value) in unused_keys.iter() {
-                        callback(path.as_path().clone(), &key, &value);
+                        callback(*path.as_path(), key, value);
                     }
                 }
                 return Ok(Untagged::String(s));
@@ -959,12 +960,11 @@ fn test_untagged_enum() {
             if let Ok(n) = number {
                 if let Some(mut callback) = unused_key_callback {
                     for (path, key, value) in unused_keys.iter() {
-                        callback(path.as_path().clone(), &key, &value);
+                        callback(*path.as_path(), key, value);
                     }
                 }
                 return Ok(Untagged::Number(n));
             }
-            drop(number);
 
             unused_keys.clear();
             let thing = {
@@ -976,7 +976,7 @@ fn test_untagged_enum() {
             if let Ok(t) = thing {
                 if let Some(mut callback) = unused_key_callback {
                     for (path, key, value) in unused_keys.iter() {
-                        callback(path.as_path().clone(), &key, &value);
+                        callback(*path.as_path(), key, value);
                     }
                 }
                 return Ok(Untagged::Thing(t));

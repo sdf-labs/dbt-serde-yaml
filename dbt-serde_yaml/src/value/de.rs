@@ -446,14 +446,16 @@ where
 pub type UnusedKeyCallback = Box<dyn for<'p, 'v> FnMut(Path<'p>, &'v Value, &'v Value)>;
 pub type FieldTransformer = Box<dyn for<'v> FnMut(&'v Value) -> TransformedResult>;
 
+/// Captures the state of a [Value] deserializer
 pub struct DeserializerState {
     value: Value,
     path: OwnedPath,
-    pub unused_key_callback: Option<UnusedKeyCallback>,
+    unused_key_callback: Option<UnusedKeyCallback>,
     field_transformer: Option<FieldTransformer>,
 }
 
 impl DeserializerState {
+    /// Constructs a Value [Deserializer] from the captured state
     pub fn get_deserializer<'de, 'u, U>(
         &'de mut self,
         unused_key_callback: Option<&'u mut U>,
@@ -470,6 +472,11 @@ impl DeserializerState {
             unused_key_callback,
             field_transformer,
         )
+    }
+
+    /// Extracts the unused key callback from the state, if any. 
+    pub fn take_unused_key_callback(&mut self) -> Option<UnusedKeyCallback> {
+        self.unused_key_callback.take()
     }
 }
 
