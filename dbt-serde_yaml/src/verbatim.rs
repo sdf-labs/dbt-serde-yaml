@@ -9,241 +9,23 @@ use std::{
     ops::{Deref, DerefMut},
 };
 
-use serde::{de::Error as _, de::Visitor, Deserialize, Deserializer, Serialize, Serializer};
-
-use crate::{value::TransformedResult, Path, Value};
-
-/// A wrapper type that protects the inner value from being transformed by the
-/// `field_transformer` when deserialized by the `Value::into_typed` method
-#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Hash, Default)]
-pub struct Verbatim<T> {
-    inner: Option<Value>,
-    phantom: std::marker::PhantomData<T>,
-}
-
-impl<T> Verbatim<T> {
-    /// Creates a new `Verbatim` instance from a `Value`.
-    pub fn new(value: Value) -> Self {
-        Verbatim {
-            inner: Some(value),
-            phantom: std::marker::PhantomData,
-        }
-    }
-
-    /// Creates a new `Verbatim` instance that represents a missing value.
-    pub fn new_missing() -> Self {
-        Verbatim {
-            inner: None,
-            phantom: std::marker::PhantomData,
-        }
-    }
-
-    /// Returns a reference to the inner `Value`, if it exists.
-    pub fn as_ref(&self) -> Option<&Value> {
-        self.inner.as_ref()
-    }
-
-    /// Unwraps the [Verbatim], returning the inner `Value` if present.
-    pub fn into_inner(self) -> Option<Value> {
-        self.inner
-    }
-
-    /// Returns true if this [Verbatim] instance represents a missing value.
-    pub fn is_missing(&self) -> bool {
-        self.inner.is_none()
-    }
-
-    /// Returns true if this [Verbatim] instance contains a value.
-    pub fn is_present(&self) -> bool {
-        self.inner.is_some()
-    }
-}
-
-impl<'de, T> Verbatim<T>
-where
-    T: Deserialize<'de>,
-{
-    /// Deserialize this [Verbatim] instance into the target type `T`.
-    pub fn into_typed<U, F>(
-        self,
-        unused_key_callback: U,
-        field_transformer: F,
-    ) -> Result<T, crate::Error>
-    where
-        U: FnMut(Path<'_>, &Value, &Value),
-        F: for<'v> FnMut(&'v Value) -> TransformedResult,
-    {
-        if let Some(value) = self.inner {
-            value.into_typed(unused_key_callback, field_transformer)
-        } else {
-            T::deserialize(MissingFieldDeserializer)
-        }
-    }
-
-    /// Deserialize this [Verbatim] instance into the target type `T`
-    pub fn into_typed_default(self) -> Result<T, crate::Error> {
-        self.into_typed(|_, _, _| {}, |_| Ok(None))
-    }
-
-    /// Deserialize this [Verbatim] instance to the target type `T`, without
-    /// consuming it.
-    pub fn to_typed<U, F>(
-        &'de self,
-        unused_key_callback: U,
-        field_transformer: F,
-    ) -> Result<T, crate::Error>
-    where
-        U: FnMut(Path<'_>, &Value, &Value),
-        F: for<'v> FnMut(&'v Value) -> TransformedResult,
-    {
-        if let Some(value) = &self.inner {
-            value.to_typed(unused_key_callback, field_transformer)
-        } else {
-            T::deserialize(MissingFieldDeserializer)
-        }
-    }
-
-    /// Deserialize this [Verbatim] instance to the target type `T`, without consuming it,
-    pub fn to_typed_default(&'de self) -> Result<T, crate::Error> {
-        self.to_typed(|_, _, _| {}, |_| Ok(None))
-    }
-}
-
-impl<T> Deref for Verbatim<T> {
-    type Target = Option<Value>;
-
-    fn deref(&self) -> &Self::Target {
-        &self.inner
-    }
-}
-
-impl<T> DerefMut for Verbatim<T> {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.inner
-    }
-}
-
-impl<T> From<Value> for Verbatim<T> {
-    fn from(value: Value) -> Self {
-        Verbatim::new(value)
-    }
-}
-
-impl<T> Serialize for Verbatim<T>
-where
-    T: Serialize,
-{
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        self.inner.serialize(serializer)
-    }
-}
-
-struct MissingFieldDeserializer;
-
-impl<'de> Deserializer<'de> for MissingFieldDeserializer {
-    type Error = crate::Error;
-
-    fn deserialize_any<V>(self, _visitor: V) -> Result<V::Value, Self::Error>
-    where
-        V: Visitor<'de>,
-    {
-        Err(Self::Error::custom("missing field"))
-    }
-
-    fn deserialize_option<V>(self, visitor: V) -> Result<V::Value, Self::Error>
-    where
-        V: Visitor<'de>,
-    {
-        visitor.visit_none()
-    }
-
-    serde::forward_to_deserialize_any! {
-        bool i8 i16 i32 i64 u8 u16 u32 u64 f32 f64 char str string bytes byte_buf
-        unit unit_struct newtype_struct seq tuple tuple_struct map struct
-        enum identifier ignored_any
-    }
-}
-
-impl<'de, T> Deserialize<'de> for Verbatim<T>
-where
-    T: Deserialize<'de>,
-{
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        let _g = with_should_not_transform_any();
-
-        let maybe_value = Value::deserialize(deserializer);
-
-        match maybe_value {
-            Ok(value) => Ok(Verbatim::new(value)),
-            Err(err) => {
-                let msg = err.to_string();
-                // missing field errors must be handled as dictated by T:
-                if msg.starts_with("missing field ")
-                    && T::deserialize(MissingFieldDeserializer).is_ok()
-                {
-                    // If T can be deserialized from a missing field, then we
-                    // retain the missing field in the Verbatim value:
-                    Ok(Verbatim::new_missing())
-                } else {
-                    // Otherwise, we propagate the error:
-                    Err(err)
-                }
-            }
-        }
-    }
-}
-
-#[cfg(feature = "schemars")]
-impl<T> schemars::JsonSchema for Verbatim<T>
-where
-    T: schemars::JsonSchema,
-{
-    fn schema_name() -> String {
-        T::schema_name()
-    }
-
-    fn json_schema(generator: &mut schemars::gen::SchemaGenerator) -> schemars::schema::Schema {
-        T::json_schema(generator)
-    }
-
-    fn is_referenceable() -> bool {
-        T::is_referenceable()
-    }
-
-    fn schema_id() -> std::borrow::Cow<'static, str> {
-        T::schema_id()
-    }
-
-    #[doc(hidden)]
-    fn _schemars_private_non_optional_json_schema(
-        generator: &mut schemars::gen::SchemaGenerator,
-    ) -> schemars::schema::Schema {
-        T::_schemars_private_non_optional_json_schema(generator)
-    }
-
-    #[doc(hidden)]
-    fn _schemars_private_is_option() -> bool {
-        T::_schemars_private_is_option()
-    }
-}
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 ////////////////////////////////////////////////////////////////////////
 
 /// A wrapper type that protects the inner value from being transformed by the
 /// `field_transformer` when deserialized by the `Value::into_typed` method.
 ///
-/// @Deprecated This type is deprecated and will be removed in a future version.
-/// Use [Verbatim] instead.
-#[repr(transparent)]
-pub struct VerbatimLegacy<T>(pub T);
+/// Generic type parameters `T` is the type of the inner value. Optional type
+/// parameter `Sch` is used to specify a type for JsonSchema generation, and
+/// defaults to the same type as `T`. This is useful for cases where e.g. you
+/// want to capture the value of a field as a `Value` during deserialization,
+/// but still treat the field *as though* it were some primitive type like
+/// `bool` in the Json schema -- in which case you would use `Verbatim<Value,
+/// bool>`.
+pub struct Verbatim<T, Sch = T>(pub T, pub std::marker::PhantomData<Sch>);
 
-impl<T> Deref for VerbatimLegacy<T> {
+impl<T, Sch> Deref for Verbatim<T, Sch> {
     type Target = T;
 
     fn deref(&self) -> &Self::Target {
@@ -251,24 +33,36 @@ impl<T> Deref for VerbatimLegacy<T> {
     }
 }
 
-impl<T> DerefMut for VerbatimLegacy<T> {
+impl<T, Sch> DerefMut for Verbatim<T, Sch> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.0
     }
 }
 
-impl<T> Clone for VerbatimLegacy<T>
+impl<T, Sch> AsRef<T> for Verbatim<T, Sch> {
+    fn as_ref(&self) -> &T {
+        &self.0
+    }
+}
+
+impl<T, Sch> AsMut<T> for Verbatim<T, Sch> {
+    fn as_mut(&mut self) -> &mut T {
+        &mut self.0
+    }
+}
+
+impl<T, Sch> Clone for Verbatim<T, Sch>
 where
     T: Clone,
 {
     fn clone(&self) -> Self {
-        VerbatimLegacy(self.0.clone())
+        Verbatim(self.0.clone(), std::marker::PhantomData::<Sch>)
     }
 }
 
-impl<T> Copy for VerbatimLegacy<T> where T: Copy {}
+impl<T, Sch> Copy for Verbatim<T, Sch> where T: Copy {}
 
-impl<T> Debug for VerbatimLegacy<T>
+impl<T, Sch> Debug for Verbatim<T, Sch>
 where
     T: Debug,
 {
@@ -277,7 +71,7 @@ where
     }
 }
 
-impl<T> PartialEq for VerbatimLegacy<T>
+impl<T, Sch> PartialEq for Verbatim<T, Sch>
 where
     T: PartialEq,
 {
@@ -286,9 +80,9 @@ where
     }
 }
 
-impl<T> Eq for VerbatimLegacy<T> where T: Eq {}
+impl<T, Sch> Eq for Verbatim<T, Sch> where T: Eq {}
 
-impl<T> PartialOrd for VerbatimLegacy<T>
+impl<T, Sch> PartialOrd for Verbatim<T, Sch>
 where
     T: PartialOrd,
 {
@@ -297,7 +91,7 @@ where
     }
 }
 
-impl<T> Ord for VerbatimLegacy<T>
+impl<T, Sch> Ord for Verbatim<T, Sch>
 where
     T: Ord,
 {
@@ -306,7 +100,7 @@ where
     }
 }
 
-impl<T> Hash for VerbatimLegacy<T>
+impl<T, Sch> Hash for Verbatim<T, Sch>
 where
     T: Hash,
 {
@@ -315,22 +109,22 @@ where
     }
 }
 
-impl<T> Default for VerbatimLegacy<T>
+impl<T, Sch> Default for Verbatim<T, Sch>
 where
     T: Default,
 {
     fn default() -> Self {
-        VerbatimLegacy(T::default())
+        Verbatim(T::default(), std::marker::PhantomData::<Sch>)
     }
 }
 
-impl<T> From<T> for VerbatimLegacy<T> {
+impl<T, Sch> From<T> for Verbatim<T, Sch> {
     fn from(value: T) -> Self {
-        VerbatimLegacy(value)
+        Verbatim(value, std::marker::PhantomData::<Sch>)
     }
 }
 
-impl<T> Serialize for VerbatimLegacy<T>
+impl<T, Sch> Serialize for Verbatim<T, Sch>
 where
     T: Serialize,
 {
@@ -342,7 +136,7 @@ where
     }
 }
 
-impl<'de, T> Deserialize<'de> for VerbatimLegacy<T>
+impl<'de, T, Sch> Deserialize<'de> for Verbatim<T, Sch>
 where
     T: Deserialize<'de>,
 {
@@ -351,41 +145,41 @@ where
         D: Deserializer<'de>,
     {
         let _g = with_should_not_transform_any();
-        T::deserialize(deserializer).map(VerbatimLegacy)
+        T::deserialize(deserializer).map(|value| Verbatim(value, std::marker::PhantomData::<Sch>))
     }
 }
 
 #[cfg(feature = "schemars")]
-impl<T> schemars::JsonSchema for VerbatimLegacy<T>
+impl<T, Sch> schemars::JsonSchema for Verbatim<T, Sch>
 where
-    T: schemars::JsonSchema,
+    Sch: schemars::JsonSchema,
 {
     fn schema_name() -> String {
-        T::schema_name()
+        Sch::schema_name()
     }
 
     fn json_schema(generator: &mut schemars::gen::SchemaGenerator) -> schemars::schema::Schema {
-        T::json_schema(generator)
+        Sch::json_schema(generator)
     }
 
     fn is_referenceable() -> bool {
-        T::is_referenceable()
+        Sch::is_referenceable()
     }
 
     fn schema_id() -> std::borrow::Cow<'static, str> {
-        T::schema_id()
+        Sch::schema_id()
     }
 
     #[doc(hidden)]
     fn _schemars_private_non_optional_json_schema(
         generator: &mut schemars::gen::SchemaGenerator,
     ) -> schemars::schema::Schema {
-        T::_schemars_private_non_optional_json_schema(generator)
+        Sch::_schemars_private_non_optional_json_schema(generator)
     }
 
     #[doc(hidden)]
     fn _schemars_private_is_option() -> bool {
-        T::_schemars_private_is_option()
+        Sch::_schemars_private_is_option()
     }
 }
 
