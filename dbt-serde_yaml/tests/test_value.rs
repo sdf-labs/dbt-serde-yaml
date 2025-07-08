@@ -6,9 +6,9 @@
 
 use std::collections::HashMap;
 
-use dbt_serde_yaml::value::extract_reusable_deserializer_state;
+use dbt_serde_yaml::Mapping;
 use dbt_serde_yaml::{value::TransformedResult, Number, Value, Verbatim};
-use dbt_serde_yaml::{Mapping, Path};
+use dbt_serde_yaml_derive::UntaggedEnumDeserialize;
 use indoc::indoc;
 use serde::de::{DeserializeOwned, IntoDeserializer};
 use serde::Deserialize as _;
@@ -917,84 +917,26 @@ fn test_untagged_enum() {
     }
 
     #[allow(clippy::large_enum_variant)]
-    #[derive(PartialEq, Eq, Debug)]
-    // #[serde(untagged)]
-    enum Untagged {
+    #[derive(UntaggedEnumDeserialize, PartialEq, Eq, Debug)]
+    #[serde(untagged)]
+    enum Untagged<T> {
         String(String),
-        Number(i32),
-        Thing(Thing),
+        Number(i32, i32),
+        Thing(T),
+        Unit,
     }
 
-    impl<'de> serde::Deserialize<'de> for Untagged {
-        fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-        where
-            D: serde::Deserializer<'de>,
-        {
-            let mut state = extract_reusable_deserializer_state(deserializer)?;
-            let unused_key_callback = state.take_unused_key_callback();
-            let mut unused_keys = vec![];
-
-            let string = {
-                let mut collect_unused_keys = |path: Path<'_>, key: &Value, value: &Value| {
-                    unused_keys.push((path.to_owned_path(), key.clone(), value.clone()));
-                };
-
-                String::deserialize(state.get_deserializer(Some(&mut collect_unused_keys)))
-            };
-            if let Ok(s) = string {
-                if let Some(mut callback) = unused_key_callback {
-                    for (path, key, value) in unused_keys.iter() {
-                        callback(*path.as_path(), key, value);
-                    }
-                }
-                return Ok(Untagged::String(s));
-            }
-
-            unused_keys.clear();
-            let number = {
-                let mut collect_unused_keys = |path: Path<'_>, key: &Value, value: &Value| {
-                    unused_keys.push((path.to_owned_path(), key.clone(), value.clone()));
-                };
-                i32::deserialize(state.get_deserializer(Some(&mut collect_unused_keys)))
-            };
-            if let Ok(n) = number {
-                if let Some(mut callback) = unused_key_callback {
-                    for (path, key, value) in unused_keys.iter() {
-                        callback(*path.as_path(), key, value);
-                    }
-                }
-                return Ok(Untagged::Number(n));
-            }
-
-            unused_keys.clear();
-            let thing = {
-                let mut collect_unused_keys = |path: Path<'_>, key: &Value, value: &Value| {
-                    unused_keys.push((path.to_owned_path(), key.clone(), value.clone()));
-                };
-                Thing::deserialize(state.get_deserializer(Some(&mut collect_unused_keys)))
-            };
-            if let Ok(t) = thing {
-                if let Some(mut callback) = unused_key_callback {
-                    for (path, key, value) in unused_keys.iter() {
-                        callback(*path.as_path(), key, value);
-                    }
-                }
-                return Ok(Untagged::Thing(t));
-            }
-
-            Err(serde::de::Error::custom(
-                "Failed to deserialize Untagged enum",
-            ))
-        }
-    }
-
-    let value = dbt_serde_yaml::from_str::<Value>("42").unwrap();
-    let untagged = deserialize_value::<Untagged>(value, |_| Ok(None)).0;
-    assert_eq!(untagged, Untagged::Number(42));
+    let value = dbt_serde_yaml::from_str::<Value>("[42, 32]").unwrap();
+    let untagged = deserialize_value::<Untagged<String>>(value, |_| Ok(None)).0;
+    assert_eq!(untagged, Untagged::Number(42, 32));
 
     let value = dbt_serde_yaml::from_str::<Value>("'hello'").unwrap();
-    let untagged = deserialize_value::<Untagged>(value, |_| Ok(None)).0;
+    let untagged = deserialize_value::<Untagged<i64>>(value, |_| Ok(None)).0;
     assert_eq!(untagged, Untagged::String("hello".to_string()));
+
+    let value = dbt_serde_yaml::from_str::<Value>("").unwrap();
+    let untagged = deserialize_value::<Untagged<Thing>>(value, |_| Ok(None)).0;
+    assert_eq!(untagged, Untagged::Unit);
 
     let yaml = indoc! {"
         a: 3
@@ -1002,7 +944,7 @@ fn test_untagged_enum() {
         c: false
     "};
     let value = dbt_serde_yaml::from_str::<Value>(yaml).unwrap();
-    let (untagged, unused_keys) = deserialize_value::<Untagged>(value, |v| {
+    let (untagged, unused_keys) = deserialize_value::<Untagged<Thing>>(value, |v| {
         if v.is_u64() {
             Ok(Some(Value::from(v.as_u64().unwrap() + 100)))
         } else if v.is_bool() {
@@ -1027,4 +969,108 @@ fn test_untagged_enum() {
             c: true,
         })
     );
+
+    let yaml = indoc! {"
+        a: 3
+        b: 4
+    "};
+    let value = dbt_serde_yaml::from_str::<Value>(yaml).unwrap();
+    let expected_err = Untagged::<Thing>::deserialize(value.into_deserializer())
+        .unwrap_err()
+        .to_string();
+    assert_eq!(
+        expected_err,
+        "data did not match any variant of untagged enum Untagged"
+    );
+}
+
+#[cfg(feature = "flatten_dunder")]
+#[test]
+fn test_untagged_enum_flatten_dunder() {
+    #[derive(Deserialize, PartialEq, Eq, Debug)]
+    struct Thing {
+        a: Verbatim<i32>,
+        b: Verbatim<Option<i32>>,
+        c: bool,
+    }
+
+    #[allow(clippy::large_enum_variant)]
+    #[derive(UntaggedEnumDeserialize, PartialEq, Eq, Debug)]
+    #[serde(untagged)]
+    enum Untagged<T> {
+        String(String),
+        Number(i32, i32),
+        Thing(T),
+        Unit,
+    }
+
+    #[derive(Deserialize, PartialEq, Eq, Debug)]
+    struct Thing2 {
+        __untagged__: Untagged<Thing>,
+        __rest__: HashMap<String, String>,
+    }
+
+    let yaml = indoc! {"
+        a: 3
+        c: false
+        y: '5'
+    "};
+    let value = dbt_serde_yaml::from_str::<Value>(yaml).unwrap();
+    let (untagged, unused_keys) = deserialize_value::<Untagged<Thing2>>(value, |v| {
+        if v.is_u64() {
+            Ok(Some(Value::from(v.as_u64().unwrap() + 100)))
+        } else if v.is_bool() {
+            Ok(Some(Value::from(true)))
+        } else {
+            Ok(None)
+        }
+    });
+    assert!(unused_keys.is_empty());
+    assert_eq!(
+        untagged,
+        Untagged::Thing(Thing2 {
+            __untagged__: Untagged::Thing(Thing {
+                a: Verbatim::new(Value::from(3)),
+                b: Verbatim::new_missing(),
+                c: true,
+            }),
+            // FIXME: flatten keys after a flattened untagged enum doesn't work yet:
+            // __rest__: HashMap::from([("y".to_string(), "5".to_string())]),
+            __rest__: HashMap::new(),
+        })
+    );
+
+    let yaml = indoc! {"
+        - a: 3
+          c: false
+        -
+        - [1, 2]
+        - 'hello'
+    "};
+    let value = dbt_serde_yaml::from_str::<Value>(yaml).unwrap();
+    let (list, unused_keys) = deserialize_value::<Vec<Untagged<Thing2>>>(value, |v| {
+        if v.is_u64() {
+            Ok(Some(Value::from(v.as_u64().unwrap() + 100)))
+        } else if v.is_bool() {
+            Ok(Some(Value::from(true)))
+        } else {
+            Ok(None)
+        }
+    });
+    assert!(unused_keys.is_empty());
+    assert_eq!(list.len(), 4);
+    assert_eq!(
+        list[0],
+        Untagged::Thing(Thing2 {
+            __untagged__: Untagged::Thing(Thing {
+                a: Verbatim::new(Value::from(3)),
+                b: Verbatim::new_missing(),
+                c: true,
+            }),
+            __rest__: HashMap::new(),
+        })
+    );
+    assert_eq!(list[1], Untagged::Unit);
+    assert_eq!(list[2], Untagged::Number(101, 102));
+    assert_eq!(list[3], Untagged::String("hello".to_string()));
 }

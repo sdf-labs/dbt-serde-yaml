@@ -446,20 +446,23 @@ where
     where
         V: Visitor<'de>,
     {
-        self.maybe_apply_transformation()?;
-        maybe_expecting_should_be!(self, deserialize_any, visitor);
-
         let span = self.value.span();
         self.value.broadcast_end_mark();
         if is_deserializing_value_then_reset() {
-            save_deserializer_state(
-                Some(self.value),
-                self.path,
-                self.unused_key_callback,
-                self.field_transformer,
-            );
+            // SAFETY: self.unused_key_callback and self.field_transformer are
+            // passed in from outside and guaranteed to be valid for 'de
+            unsafe {
+                save_deserializer_state(
+                    Some(self.value),
+                    self.path,
+                    self.unused_key_callback.map(|cb| Box::new(cb) as _),
+                    self.field_transformer.map(|cb| Box::new(cb) as _),
+                );
+            }
             return Err(Error::custom("Value deserialized via fast path"));
         }
+        self.maybe_apply_transformation()?;
+        maybe_expecting_should_be!(self, deserialize_any, visitor);
 
         match self.value {
             Value::Null(..) => visitor.visit_unit(),
@@ -1292,7 +1295,21 @@ where
     where
         V: Visitor<'de>,
     {
-        reset_is_deserializing_value();
+        if is_deserializing_value_then_reset() {
+            let value = Value::mapping(self.iter.collect());
+            // SAFETY: self.unused_key_callback and self.field_transformer are
+            // passed in from outside and guaranteed to be valid for 'de
+            unsafe {
+                save_deserializer_state(
+                    Some(value),
+                    self.path,
+                    self.unused_key_callback.map(|cb| Box::new(cb) as _),
+                    self.field_transformer.map(|cb| Box::new(cb) as _),
+                );
+            }
+            return Err(Error::custom("Value deserialized via fast path"));
+        }
+
         visitor.visit_map(self)
     }
 
@@ -1543,11 +1560,25 @@ where
     where
         V: Visitor<'de>,
     {
-        reset_is_deserializing_value();
-
-        let mut collect_unused = |_: Path<'_>, key: &Value, value: &Value| {
+        let mut collect_unused = move |_: Path<'_>, key: &Value, value: &Value| {
             self.remaining.push((key.clone(), value.clone()));
         };
+
+        if is_deserializing_value_then_reset() {
+            let value = Value::mapping(self.iter.collect());
+            // SAFETY: self.unused_key_callback and self.field_transformer are
+            // passed in from outside and guaranteed to be valid for 'de
+            unsafe {
+                save_deserializer_state(
+                    Some(value),
+                    self.path,
+                    Some(Box::new(collect_unused) as _),
+                    self.field_transformer.map(|cb| Box::new(cb) as _),
+                );
+            }
+            return Err(Error::custom("Value deserialized via fast path"));
+        }
+
         let deserializer = MapDeserializer {
             iter: self.iter,
             current_key: None,
