@@ -6,7 +6,6 @@
 
 use std::collections::HashMap;
 
-use dbt_serde_yaml::Mapping;
 use dbt_serde_yaml::{value::TransformedResult, Number, Value, Verbatim};
 use dbt_serde_yaml_derive::UntaggedEnumDeserialize;
 use indoc::indoc;
@@ -246,7 +245,7 @@ fn test_into_typed() {
     );
     assert_eq!(test3.seconds.len(), 2);
     let (test2_1, unused_keys): (Test2, _) =
-        deserialize_value(test3.seconds[0].as_ref().unwrap().clone(), |v| {
+        deserialize_value(test3.seconds[0].as_ref().clone(), |v| {
             if let Some(n) = v.as_u64() {
                 Ok(Some(Value::number(Number::from(n + 2))))
             } else {
@@ -536,9 +535,9 @@ fn test_verbatim() {
         .unwrap();
 
     assert_eq!(thing.x, 101);
-    assert_eq!(thing.y.to_typed_default().unwrap(), 2);
-    assert_eq!(thing.z.to_typed_default().unwrap(), Some(3));
-    assert!(thing.v.is_missing());
+    assert_eq!(*thing.y, 2);
+    assert_eq!(*thing.z, Some(3));
+    assert!(thing.v.is_none());
 
     let thing2: Thing = dbt_serde_yaml::from_str(indoc! {"
         x: 101
@@ -580,15 +579,9 @@ fn test_verbatim_flatten() {
         )
         .unwrap();
     assert_eq!(thing2.x, None);
-    assert_eq!(*thing2.y, Some(2.into()));
+    assert_eq!(*thing2.y, 2);
     // Note: unfortunately `Verbatim` does not work in `flatten` fields:
-    assert_eq!(
-        *thing2.rest,
-        Some(Value::from(Mapping::from_iter([(
-            "z".to_string().into(),
-            Value::null()
-        )])))
-    );
+    assert_eq!(*thing2.rest, HashMap::from_iter([("z".to_string(), None)]));
 
     let value = dbt_serde_yaml::to_value(thing2).unwrap();
     assert_eq!(
@@ -623,8 +616,8 @@ fn test_flatten() {
         panic!("unexpected unused keys: {:?}", unused_keys);
     }
     assert_eq!(thing3.x, Some(1));
-    assert_eq!(*thing3.y, Some(2.into()));
-    assert_eq!(thing3.__flatten__["z"].to_typed_default().unwrap(), Some(3));
+    assert_eq!(*thing3.y, 2);
+    assert_eq!(*thing3.__flatten__["z"], Some(3));
 
     let value = dbt_serde_yaml::to_value(thing3).unwrap();
     assert_eq!(
@@ -646,7 +639,7 @@ fn test_flatten() {
         thing3,
         Thing3 {
             x: None,
-            y: Value::from(2).into(),
+            y: 2.into(),
             __flatten__: HashMap::new()
         }
     );
@@ -684,8 +677,8 @@ fn test_verbatim_flatten_nested() {
     if !unused_keys.is_empty() {
         panic!("unexpected unused keys: {:?}", unused_keys);
     }
-    assert_eq!(*thing4.x, Some(Value::from(1)));
-    assert_eq!(*thing4.__thing5__.a, Some(Value::from(3)));
+    assert_eq!(*thing4.x, Some(1));
+    assert_eq!(*thing4.__thing5__.a, Some(3));
 }
 
 #[cfg(feature = "flatten_dunder")]
@@ -794,7 +787,7 @@ fn test_multi_flatten_shouldbe() {
     assert!(thing6.__rest__["b"].is());
     let inner = thing6.__rest__["b"].as_ref().unwrap();
     assert_eq!(inner.x, Some(4));
-    assert_eq!(*inner.y, Some("a string".into()));
+    assert_eq!(*inner.y, "a string");
 
     let yaml = indoc! {"
         a: 3
@@ -819,7 +812,7 @@ fn test_schemars() {
     #[derive(JsonSchema)]
     struct Thing {
         x: Option<Option<i32>>,
-        y: Verbatim<Value>,
+        y: Verbatim<Value, String>,
         z: Verbatim<Option<Value>>,
         v: Verbatim<Option<Option<String>>>,
     }
@@ -846,7 +839,7 @@ properties:
     - 'null'
     format: int32
   y:
-    $ref: '#/definitions/AnyValue'
+    type: string
   z:
     anyOf:
     - $ref: '#/definitions/AnyValue'
@@ -875,7 +868,7 @@ fn test_schemars_flatten() {
     #[derive(Deserialize, JsonSchema)]
     struct Thing2 {
         x: Option<i32>,
-        y: Verbatim<i32>,
+        y: Verbatim<Value, i32>,
         //        #[serde(flatten)]
         __thing__: Option<Thing>,
     }
@@ -964,8 +957,8 @@ fn test_untagged_enum() {
     assert_eq!(
         untagged,
         Untagged::Thing(Thing {
-            a: Verbatim::new(Value::from(3)),
-            b: Verbatim::new_missing(),
+            a: 3.into(),
+            b: None.into(),
             c: true,
         })
     );
@@ -1030,8 +1023,8 @@ fn test_untagged_enum_flatten_dunder() {
         untagged,
         Untagged::Thing(Thing2 {
             __untagged__: Untagged::Thing(Thing {
-                a: Verbatim::new(Value::from(3)),
-                b: Verbatim::new_missing(),
+                a: 3.into(),
+                b: None.into(),
                 c: true,
             }),
             // FIXME: flatten keys after a flattened untagged enum doesn't work yet:
@@ -1063,8 +1056,8 @@ fn test_untagged_enum_flatten_dunder() {
         list[0],
         Untagged::Thing(Thing2 {
             __untagged__: Untagged::Thing(Thing {
-                a: Verbatim::new(Value::from(3)),
-                b: Verbatim::new_missing(),
+                a: 3.into(),
+                b: None.into(),
                 c: true,
             }),
             __rest__: HashMap::new(),
