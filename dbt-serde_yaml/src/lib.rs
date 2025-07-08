@@ -227,5 +227,6 @@ pub(crate) fn is_flatten_key(_key: &[u8]) -> bool {
     false
 }
 
+pub use dbt_serde_yaml_derive::UntaggedEnumDeserialize;
 #[cfg(feature = "schemars")]
 pub use dbt_serde_yaml_schemars_derive::JsonSchema;
