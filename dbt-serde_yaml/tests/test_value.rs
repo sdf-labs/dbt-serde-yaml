@@ -6,6 +6,7 @@
 
 use std::collections::HashMap;
 
+use dbt_serde_yaml::Spanned;
 use dbt_serde_yaml::{value::TransformedResult, Number, Value, Verbatim};
 use dbt_serde_yaml_derive::UntaggedEnumDeserialize;
 use indoc::indoc;
@@ -975,6 +976,33 @@ fn test_untagged_enum() {
         expected_err,
         "data did not match any variant of untagged enum Untagged"
     );
+
+    #[derive(Deserialize)]
+    struct ThingWithSpanned {
+        v: Spanned<Vec<Spanned<i32>>>,
+    }
+
+    let yaml = indoc! {"
+        v:
+          - 111
+          - 222
+    "};
+
+    let value: dbt_serde_yaml::Value = dbt_serde_yaml::from_str(yaml).unwrap();
+    let thing = match Untagged::<ThingWithSpanned>::deserialize(value.into_deserializer()).unwrap()
+    {
+        Untagged::Thing(thing) => thing,
+        _ => panic!("expected Thing variant"),
+    };
+    assert_eq!(thing.v.len(), 2);
+    assert_eq!(thing.v.span().start.line, 2);
+    assert_eq!(thing.v.span().end.line, 4);
+    assert_eq!(thing.v[0].span().start.index, 7);
+    assert_eq!(thing.v[0].span().end.index, 15);
+    assert_eq!(thing.v[0].span().start.line, 2);
+    assert_eq!(thing.v[0].span().end.line, 3);
+    assert_eq!(thing.v[1].span().start.line, 3);
+    assert_eq!(thing.v[1].span().end.line, 4);
 }
 
 #[cfg(feature = "flatten_dunder")]

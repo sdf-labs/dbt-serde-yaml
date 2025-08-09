@@ -1229,6 +1229,8 @@ where
         self.current_idx += 1;
         match self.iter.next() {
             Some(value) => {
+                let span = value.span();
+                value.broadcast_start_mark();
                 let deserializer = ValueRefDeserializer::new_with(
                     value,
                     Path::Seq {
@@ -1238,7 +1240,9 @@ where
                     self.unused_key_callback.as_deref_mut(),
                     self.field_transformer.as_deref_mut(),
                 );
-                seed.deserialize(deserializer).map(Some)
+                seed.deserialize(deserializer)
+                    .map(Some)
+                    .map_err(|e| error::set_span(e, span))
             }
             None => Ok(None),
         }
