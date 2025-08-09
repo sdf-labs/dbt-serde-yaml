@@ -1179,6 +1179,7 @@ where
         match self.iter.next() {
             Some(value) => {
                 let span = value.span();
+                value.broadcast_start_mark();
                 let deserializer = ValueDeserializer::new_with(
                     value,
                     Path::Seq {
