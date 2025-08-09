@@ -204,6 +204,7 @@ fn test_spanned_de_from_value() {
     assert_eq!(point.v[1].span().end.column, 1);
 }
 
+#[allow(dead_code)]
 fn my_custom_deserialize<'de, D>(deserializer: D) -> Result<Spanned<f64>, D::Error>
 where
     D: serde::Deserializer<'de>,
