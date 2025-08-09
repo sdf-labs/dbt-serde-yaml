@@ -222,6 +222,20 @@ fn test_custom_deserialize_with() {
         #[serde(deserialize_with = "my_custom_deserialize")]
         y: Spanned<f64>,
     }
+
+    let yaml = indoc! {"
+        x: 1.0
+        y: 2.0
+    "};
+
+    let value: dbt_serde_yaml::Value = dbt_serde_yaml::from_str(yaml).unwrap();
+    let thing: Spanned<Thing> = dbt_serde_yaml::from_value(value).unwrap();
+
+    assert!(thing.has_valid_span());
+    assert_eq!(thing.span().start.line, 1);
+    assert_eq!(thing.span().start.column, 1);
+    assert_eq!(thing.span().end.line, 3);
+    assert_eq!(thing.span().end.column, 1);
 }
 
 #[cfg(feature = "filename")]
