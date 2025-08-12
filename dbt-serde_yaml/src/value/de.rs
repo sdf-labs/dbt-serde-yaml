@@ -433,7 +433,10 @@ where
     }
 }
 
+/// A callback type for handling unused keys during deserialization.
 pub type UnusedKeyCallback<'u> = Box<dyn for<'p, 'v> FnMut(Path<'p>, &'v Value, &'v Value) + 'u>;
+
+/// A transformer function for modifying field values during deserialization.
 pub type FieldTransformer<'f> = Box<dyn for<'v> FnMut(&'v Value) -> TransformedResult + 'f>;
 
 /// Captures the state of a [Value] deserializer
@@ -467,7 +470,7 @@ impl DeserializerState {
     ) -> ValueRefDeserializer<'de, 'u, 'de, U, FieldTransformer<'static>>
     where
         'de: 'u,
-        U: FnMut(Path<'_>, &Value, &Value),
+        U: for<'v> FnMut(Path<'_>, &'v Value, &'v Value),
     {
         let field_transformer = self.field_transformer.as_mut();
 
