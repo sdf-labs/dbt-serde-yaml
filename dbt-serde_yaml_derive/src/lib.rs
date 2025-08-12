@@ -89,9 +89,9 @@ impl<'a> Variant<'a> {
         let block = quote! {
             __unused_keys.clear();
             let __inner = {
-                let mut collect_unused_keys = |path: __serde_yaml::Path<'_>, key: &__serde_yaml::Value, value: &__serde_yaml::Value| {
+                let mut collect_unused_keys: __serde_yaml::value::UnusedKeyCallback  = Box::new(|path: __serde_yaml::Path<'_>, key: &__serde_yaml::Value, value: &__serde_yaml::Value| {
                     __unused_keys.push((path.to_owned_path(), key.clone(), value.clone()));
-                };
+                });
 
                 #type_name::deserialize(__state.get_deserializer(Some(&mut collect_unused_keys)))
             };

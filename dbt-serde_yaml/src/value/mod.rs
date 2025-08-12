@@ -27,7 +27,9 @@ pub(crate) use de::ValueVisitor;
 
 pub use de::extract_reusable_deserializer_state;
 pub use de::DeserializerState;
+pub use de::FieldTransformer;
 pub use de::TransformedResult;
+pub use de::UnusedKeyCallback;
 
 /// Represents any valid YAML value.
 #[derive(Clone)]
