@@ -337,6 +337,7 @@ impl<'de> Deserializer<'de> for Value {
     }
 }
 
+/// A deserializer for YAML values.
 pub struct ValueDeserializer<'a, 'f, U, F> {
     value: Value,
     path: Path<'a>,

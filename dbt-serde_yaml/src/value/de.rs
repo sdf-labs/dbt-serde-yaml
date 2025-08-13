@@ -350,8 +350,9 @@ impl Value {
         error::set_span(de::Error::invalid_type(self.unexpected(), exp), self.span())
     }
 
+    /// Returns an [Unexpected] that describes this Value
     #[cold]
-    pub(crate) fn unexpected(&self) -> Unexpected<'_> {
+    pub fn unexpected(&self) -> Unexpected<'_> {
         match self {
             Value::Null(..) => Unexpected::Unit,
             Value::Bool(b, ..) => Unexpected::Bool(*b),
@@ -444,6 +445,29 @@ where
     }
 }
 
+/// Consumes a [Deserializer] and extracts the tag and the reusable deserializer
+/// state. Used for deserializing internally-tagged enums.
+pub fn extract_tag_and_deserializer_state<'de, D>(
+    deserializer: D,
+    tag_key: &str,
+) -> Result<(Value, DeserializerState), D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let mut state = extract_reusable_deserializer_state(deserializer)?;
+    let val = &mut state.value;
+    match val {
+        Value::Mapping(map, ..) => {
+            let Some(tag) = map.remove(tag_key) else {
+                return Err(D::Error::custom(format!(
+                    "Expected tag key {tag_key} not found"
+                )));
+            };
+            Ok((tag, state))
+        }
+        _ => Err(D::Error::custom("Expected a mapping")),
+    }
+}
 /// A callback type for handling unused keys during deserialization.
 pub type UnusedKeyCallback<'u> = Box<dyn for<'p, 'v> FnMut(Path<'p>, &'v Value, &'v Value) + 'u>;
 
@@ -487,6 +511,25 @@ impl DeserializerState {
 
         ValueRefDeserializer::new_with(
             &self.value,
+            *self.path.as_path(),
+            unused_key_callback,
+            field_transformer,
+        )
+    }
+
+    /// Constructs a Value [Deserializer] from the captured state
+    pub fn get_owned_deserializer<'de, 'u>(
+        &'de mut self,
+    ) -> ValueDeserializer<'de, 'u, UnusedKeyCallback<'static>, FieldTransformer<'static>>
+    where
+        'de: 'u,
+    {
+        let value = std::mem::take(&mut self.value);
+        let unused_key_callback = self.unused_key_callback.as_mut();
+        let field_transformer = self.field_transformer.as_mut();
+
+        ValueDeserializer::new_with(
+            value,
             *self.path.as_path(),
             unused_key_callback,
             field_transformer,
