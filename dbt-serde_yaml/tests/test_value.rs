@@ -140,23 +140,32 @@ fn test_into_typed() {
     struct Test2 {
         first: Verbatim<Value>,
         third: u32,
+        fourth: Value,
     }
 
     let value = dbt_serde_yaml::from_str::<Value>(indoc! {"
         first: abc
         second: 99
         third: 100
+        fourth: my
         "})
     .unwrap();
 
     let (test, unused_keys): (Test, _) = deserialize_value(value.clone(), transformer);
     assert_eq!(
         unused_keys,
-        vec![(
-            "third".to_string(),
-            Value::string("third".to_string()),
-            Value::number(Number::from(100))
-        )]
+        vec![
+            (
+                "third".to_string(),
+                Value::string("third".to_string()),
+                Value::number(Number::from(100))
+            ),
+            (
+                "fourth".to_string(),
+                Value::string("fourth".to_string()),
+                Value::string("my".to_string())
+            )
+        ]
     );
     assert_eq!(
         test,
@@ -180,7 +189,9 @@ fn test_into_typed() {
         Test2 {
             // field_transform is not applied to `Verbatim`-typed fields:
             first: Value::string("abc".to_string()).into(),
-            third: 100
+            third: 100,
+            // Non-verbatim fields should be transformed:
+            fourth: Value::string("my name".to_string()),
         }
     );
 
@@ -203,8 +214,10 @@ fn test_into_typed() {
           -   first: A
               second: 1
               third: 1
+              fourth: D
           -   first: B
               third: 2
+              fourth: X
         fourth: xyz
         third: xyz
         fifth:
@@ -265,7 +278,8 @@ fn test_into_typed() {
         test2_1,
         Test2 {
             first: Value::string("A".to_string()).into(),
-            third: 3
+            third: 3,
+            fourth: Value::string("D".to_string()),
         }
     );
 }

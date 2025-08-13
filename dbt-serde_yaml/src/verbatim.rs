@@ -187,7 +187,7 @@ pub(crate) fn should_transform_any() -> bool {
     SHOULD_TRANSFORM_ANY.with(|flag| flag.get())
 }
 
-struct ShouldTransformAnyGuard(bool);
+pub(crate) struct ShouldTransformAnyGuard(bool);
 
 impl Drop for ShouldTransformAnyGuard {
     fn drop(&mut self) {
@@ -195,7 +195,7 @@ impl Drop for ShouldTransformAnyGuard {
     }
 }
 
-fn with_should_not_transform_any() -> ShouldTransformAnyGuard {
+pub(crate) fn with_should_not_transform_any() -> ShouldTransformAnyGuard {
     let current = SHOULD_TRANSFORM_ANY.with(|flag| flag.get());
     SHOULD_TRANSFORM_ANY.with(|flag| flag.set(false));
     ShouldTransformAnyGuard(current)
