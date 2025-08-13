@@ -40,14 +40,14 @@ impl<'a> Variant<'a> {
         })
     }
 
-    fn gen_type_name(&self) -> syn::Result<proc_macro2::TokenStream> {
+    fn gen_untagged_type_name(&self) -> syn::Result<proc_macro2::TokenStream> {
         match self.fields {
-            syn::Fields::Unit => Ok(quote! { <()> }),
+            syn::Fields::Unit => Ok(quote! { <() as __serde::Deserialize> }),
             syn::Fields::Unnamed(fields) => {
                 if fields.unnamed.len() == 1 {
                     // If there's only one unnamed field, we can use its type directly
                     let ty = &fields.unnamed[0].ty;
-                    Ok(quote! { <#ty> })
+                    Ok(quote! { <#ty as __serde::Deserialize> })
                 } else {
                     // If there are multiple unnamed fields, we create a tuple type
                     let types = fields
@@ -55,7 +55,7 @@ impl<'a> Variant<'a> {
                         .iter()
                         .map(|f| f.ty.clone())
                         .collect::<Vec<_>>();
-                    Ok(quote! { <(#(#types),*)> })
+                    Ok(quote! { <(#(#types),*) as __serde::Deserialize> })
                 }
             }
             syn::Fields::Named(_) => Err(syn::Error::new(
@@ -97,12 +97,52 @@ impl<'a> Variant<'a> {
         }
     }
 
+    fn gen_tagged_deserialize_expr(
+        &self,
+        enum_name: &syn::Ident,
+    ) -> syn::Result<proc_macro2::TokenStream> {
+        match self.fields {
+            syn::Fields::Unit => {
+                let enum_name = enum_name.to_string();
+                let variant_name = self.ident.to_string();
+
+                Ok(quote! {
+                    __serde::Deserializer::deserialize_any(
+                        __deserializer,
+                        __serde::__private::de::InternallyTaggedUnitVisitor::new(
+                            #enum_name,
+                            #variant_name
+                        )
+                    )
+                })
+            }
+            syn::Fields::Unnamed(fields) => {
+                if fields.unnamed.len() == 1 {
+                    let ty = &fields.unnamed[0].ty;
+
+                    Ok(quote! {
+                        <#ty as __serde::Deserialize>::deserialize(__deserializer)
+                    })
+                } else {
+                    Err(syn::Error::new(
+                        self.ident.span(),
+                        "UntaggedEnumDeserialize: tuple variants are not allowed in internally tagged enums",
+                    ))
+                }
+            }
+            syn::Fields::Named(_) => Err(syn::Error::new(
+                self.ident.span(),
+                "UntaggedEnumDeserialize: inlined struct variants are not supported -- use a named struct type instead",
+            )),
+        }
+    }
+
     fn gen_tagged_deserialize_arm(
         &self,
         enum_name: &syn::Ident,
         default_rename_policy: Option<RenamePolicy>,
     ) -> syn::Result<proc_macro2::TokenStream> {
-        let type_name = self.gen_type_name()?;
+        let expr = self.gen_tagged_deserialize_expr(enum_name)?;
         let constructor = self.gen_constructor()?;
         let tag_name = if let Some(policy) = default_rename_policy {
             policy.apply(&self.ident)
@@ -112,7 +152,7 @@ impl<'a> Variant<'a> {
 
         let block = quote! {
             Some(#tag_name) => {
-                let __inner = #type_name::deserialize(__deserializer).map_err(|e| {
+                let __inner = #expr.map_err(|e| {
                     __serde::de::Error::custom(e)
                 })?;
                 return Ok(#enum_name::#constructor);
@@ -122,8 +162,8 @@ impl<'a> Variant<'a> {
         Ok(block)
     }
 
-    fn gen_deserialize_block(&self) -> syn::Result<proc_macro2::TokenStream> {
-        let type_name = self.gen_type_name()?;
+    fn gen_untagged_deserialize_block(&self) -> syn::Result<proc_macro2::TokenStream> {
+        let type_name = self.gen_untagged_type_name()?;
 
         let block = quote! {
             __unused_keys.clear();
@@ -359,7 +399,7 @@ impl<'a> EnumDef<'a> {
 
         let mut variant_blocks = Vec::new();
         for variant in &self.variants {
-            let deserialize_block = variant.gen_deserialize_block()?;
+            let deserialize_block = variant.gen_untagged_deserialize_block()?;
             let constructor_block = variant.gen_constructor_block(enum_name)?;
             variant_blocks.push(quote! {
                 #deserialize_block

@@ -365,6 +365,7 @@ impl Value {
     }
 }
 
+#[inline]
 fn should_short_circuit_any(has_transformer: bool) -> bool {
     if !is_deserializing_value_then_reset() {
         return false;
@@ -374,21 +375,25 @@ fn should_short_circuit_any(has_transformer: bool) -> bool {
     !has_transformer || !crate::verbatim::should_transform_any()
 }
 
+#[inline]
 fn is_deserializing_value_then_reset() -> bool {
     clear_deserializer_state();
     private::IS_DESERIALIZING_VALUE.with(|cell| cell.replace(false))
 }
 
+#[inline]
 fn set_is_deserializing_value() {
     clear_deserializer_state();
     private::IS_DESERIALIZING_VALUE.with(|cell| cell.set(true));
 }
 
+#[inline]
 fn reset_is_deserializing_value() {
     clear_deserializer_state();
     private::IS_DESERIALIZING_VALUE.with(|cell| cell.set(false));
 }
 
+#[inline]
 fn clear_deserializer_state() {
     private::THE_VALUE.with(|cell| cell.set(None));
     private::THE_PATH.with(|cell| cell.set(None));
@@ -460,7 +465,7 @@ where
         Value::Mapping(map, ..) => {
             let Some(tag) = map.remove(tag_key) else {
                 return Err(D::Error::custom(format!(
-                    "Expected tag key {tag_key} not found"
+                    "Expected tag key {tag_key:?} not found"
                 )));
             };
             Ok((tag, state))
