@@ -1039,14 +1039,21 @@ fn test_tagged_enum() {
     }
 
     let yaml = indoc! {"
+        type: unit
+    "};
+    let value = dbt_serde_yaml::from_str::<Value>(yaml).unwrap();
+    let tagged = deserialize_value::<Tagged>(value, |_| Ok(None)).0;
+    assert_eq!(tagged, Tagged::Unit);
+
+    let yaml = indoc! {"
         type: t
         a: 1
         c: false
     "};
     let value = dbt_serde_yaml::from_str::<Value>(yaml).unwrap();
-    let untagged = deserialize_value::<Tagged>(value, |_| Ok(None)).0;
+    let tagged = deserialize_value::<Tagged>(value, |_| Ok(None)).0;
     assert_eq!(
-        untagged,
+        tagged,
         Tagged::T(Thing {
             a: 1.into(),
             b: None.into(),
