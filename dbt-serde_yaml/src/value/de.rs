@@ -364,6 +364,15 @@ impl Value {
     }
 }
 
+fn should_short_circuit_any(has_transformer: bool) -> bool {
+    if !is_deserializing_value_then_reset() {
+        return false;
+    }
+
+    // We can short circuit if we don't need to transform the value:
+    !has_transformer || !crate::verbatim::should_transform_any()
+}
+
 fn is_deserializing_value_then_reset() -> bool {
     clear_deserializer_state();
     private::IS_DESERIALIZING_VALUE.with(|cell| cell.replace(false))
@@ -409,8 +418,8 @@ unsafe fn save_deserializer_state<'u, 'f>(
 }
 
 /// Consumes a [Deserializer] and converts it into a [DeserializerState], which
-/// can used to construct reusable deserializers for deserializing untagged enum
-/// variants.
+/// can be used to construct reusable deserializers for deserializing untagged
+/// enum variants.
 pub fn extract_reusable_deserializer_state<'de, D>(
     deserializer: D,
 ) -> Result<DeserializerState, D::Error>
@@ -418,6 +427,8 @@ where
     D: Deserializer<'de>,
 {
     set_is_deserializing_value();
+    // Also disable field transformation for this part:
+    let _g = crate::verbatim::with_should_not_transform_any();
     let res = deserializer.deserialize_any(ValueVisitor {
         callback: &mut |_, _, _| DuplicateKey::Error,
         path: Path::Root,

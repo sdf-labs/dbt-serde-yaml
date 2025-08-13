@@ -11,10 +11,7 @@ use serde::{
 use crate::{
     error,
     value::{
-        de::{
-            is_deserializing_value_then_reset, reset_is_deserializing_value,
-            save_deserializer_state, ValueDeserializer,
-        },
+        de::{reset_is_deserializing_value, save_deserializer_state, ValueDeserializer},
         tagged,
     },
     Error, Mapping, Path, Sequence, Value,
@@ -442,7 +439,7 @@ where
     {
         let span = self.value.span();
         self.value.broadcast_end_mark();
-        if is_deserializing_value_then_reset() {
+        if super::should_short_circuit_any(self.field_transformer.is_some()) {
             // SAFETY: self.unused_key_callback and self.field_transformer are
             // passed in from outside and guaranteed to be valid for 'de
             unsafe {
@@ -1376,7 +1373,7 @@ where
     where
         V: Visitor<'de>,
     {
-        if is_deserializing_value_then_reset() {
+        if super::should_short_circuit_any(self.field_transformer.is_some()) {
             let value = Value::mapping(
                 self.iter
                     .into_iter()
@@ -1684,7 +1681,7 @@ where
             self.remaining.push((key, value));
         };
 
-        if is_deserializing_value_then_reset() {
+        if super::should_short_circuit_any(self.field_transformer.is_some()) {
             let value = Value::mapping(
                 self.iter
                     .into_iter()
