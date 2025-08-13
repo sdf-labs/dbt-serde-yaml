@@ -191,7 +191,7 @@ fn test_into_typed() {
             first: Value::string("abc".to_string()).into(),
             third: 100,
             // Non-verbatim fields should be transformed:
-            fourth: Value::string("my name".to_string()).into(),
+            fourth: Value::string("my name".to_string()),
         }
     );
 
@@ -279,7 +279,7 @@ fn test_into_typed() {
         Test2 {
             first: Value::string("A".to_string()).into(),
             third: 3,
-            fourth: Value::string("D".to_string()).into(),
+            fourth: Value::string("D".to_string()),
         }
     );
 }
