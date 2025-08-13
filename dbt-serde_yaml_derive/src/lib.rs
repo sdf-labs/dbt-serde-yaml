@@ -4,6 +4,12 @@ extern crate syn;
 
 extern crate proc_macro;
 
+use std::str::FromStr;
+
+use heck::ToKebabCase as _;
+use heck::ToLowerCamelCase as _;
+use heck::ToPascalCase as _;
+use heck::ToSnakeCase as _;
 use proc_macro::TokenStream;
 use quote::quote;
 use syn::DeriveInput;
@@ -83,15 +89,49 @@ impl<'a> Variant<'a> {
         }
     }
 
+    fn get_name(&self, default_rename_policy: Option<RenamePolicy>) -> String {
+        if let Some(policy) = default_rename_policy {
+            policy.apply(&self.ident)
+        } else {
+            self.ident.to_string()
+        }
+    }
+
+    fn gen_tagged_deserialize_arm(
+        &self,
+        enum_name: &syn::Ident,
+        default_rename_policy: Option<RenamePolicy>,
+    ) -> syn::Result<proc_macro2::TokenStream> {
+        let type_name = self.gen_type_name()?;
+        let constructor = self.gen_constructor()?;
+        let tag_name = if let Some(policy) = default_rename_policy {
+            policy.apply(&self.ident)
+        } else {
+            self.ident.to_string()
+        };
+
+        let block = quote! {
+            Some(#tag_name) => {
+                let __inner = #type_name::deserialize(__deserializer).map_err(|e| {
+                    __serde::de::Error::custom(e)
+                })?;
+                return Ok(#enum_name::#constructor);
+            }
+        };
+
+        Ok(block)
+    }
+
     fn gen_deserialize_block(&self) -> syn::Result<proc_macro2::TokenStream> {
         let type_name = self.gen_type_name()?;
 
         let block = quote! {
             __unused_keys.clear();
             let __inner = {
-                let mut collect_unused_keys: __serde_yaml::value::UnusedKeyCallback  = Box::new(|path: __serde_yaml::Path<'_>, key: &__serde_yaml::Value, value: &__serde_yaml::Value| {
-                    __unused_keys.push((path.to_owned_path(), key.clone(), value.clone()));
-                });
+                let mut collect_unused_keys: __serde_yaml::value::UnusedKeyCallback  =
+                    Box::new(|path: __serde_yaml::Path<'_>, key: &__serde_yaml::Value, value: &__serde_yaml::Value| {
+                        __unused_keys.push((path.to_owned_path(), key.clone(), value.clone()));
+                    });
 
                 #type_name::deserialize(__state.get_deserializer(Some(&mut collect_unused_keys)))
             };
@@ -121,10 +161,61 @@ impl<'a> Variant<'a> {
     }
 }
 
+#[allow(clippy::enum_variant_names)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum RenamePolicy {
+    /// Rename the field to its snake_case equivalent
+    SnakeCase,
+    /// Rename the field to its camelCase equivalent
+    CamelCase,
+    /// Rename the field to its lower_case equivalent
+    LowerCase,
+    /// Rename the field to its UPPER_CASE equivalent
+    UpperCase,
+    /// Rename the field to its PascalCase equivalent
+    PascalCase,
+    /// Rename the field to its kebab-case equivalent
+    KebabCase,
+}
+
+impl FromStr for RenamePolicy {
+    type Err = syn::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "snake_case" => Ok(RenamePolicy::SnakeCase),
+            "camelCase" => Ok(RenamePolicy::CamelCase),
+            "lowercase" => Ok(RenamePolicy::LowerCase),
+            "UPPERCASE" => Ok(RenamePolicy::UpperCase),
+            "PascalCase" => Ok(RenamePolicy::PascalCase),
+            "kebab-case" => Ok(RenamePolicy::KebabCase),
+            _ => Err(syn::Error::new(
+                proc_macro2::Span::call_site(),
+                format!("Unknown rename policy: {s}"),
+            )),
+        }
+    }
+}
+
+impl RenamePolicy {
+    fn apply(&self, ident: &syn::Ident) -> String {
+        match self {
+            RenamePolicy::SnakeCase => ident.to_string().to_snake_case(),
+            RenamePolicy::CamelCase => ident.to_string().to_lower_camel_case(),
+            RenamePolicy::LowerCase => ident.to_string().to_lowercase(),
+            RenamePolicy::UpperCase => ident.to_string().to_uppercase(),
+            RenamePolicy::PascalCase => ident.to_string().to_pascal_case(),
+            RenamePolicy::KebabCase => ident.to_string().to_kebab_case(),
+        }
+    }
+}
+
 struct EnumDef<'a> {
     ident: syn::Ident,
     generics: &'a syn::Generics,
     variants: Vec<Variant<'a>>,
+    tag: Option<String>,
+    rename_all: Option<RenamePolicy>,
 }
 
 impl<'a> EnumDef<'a> {
@@ -147,12 +238,67 @@ impl<'a> EnumDef<'a> {
             }
             false
         });
-        if !has_untagged_attr {
+        // Check for #[serde(tag = "...")] attribute
+        let tag_attr = input.attrs.iter().find_map(|attr| {
+            if !attr.path().is_ident("serde") {
+                return None;
+            }
+            let Ok(syn::Expr::Assign(expr)) = attr.parse_args() else {
+                return None;
+            };
+            let syn::Expr::Path(expr_path) = *expr.left else {
+                return None;
+            };
+            if !expr_path.path.is_ident("tag") {
+                return None;
+            }
+
+            match *expr.right {
+                syn::Expr::Lit(lit) => {
+                    match lit.lit {
+                        syn::Lit::Str(lit) => Some(lit.value()),
+                        _ => None, // Invalid tag attribute
+                    }
+                }
+                _ => None,
+            }
+        });
+
+        if !has_untagged_attr && tag_attr.is_none() {
             return Err(syn::Error::new(
                 input.span(),
-                "UntaggedEnumDeserialize: can only be derived for untagged enums",
+                "UntaggedEnumDeserialize: can only be derived for enums with #[serde(untagged)] or #[serde(tag = \"...\")] attributes",
             ));
         }
+
+        // Extract any #[serde(rename_all = "...")] directives
+        let rename_all_attr = input.attrs.iter().find_map(|attr| {
+            if !attr.path().is_ident("serde") {
+                return None;
+            }
+            let Ok(syn::Expr::Assign(expr)) = attr.parse_args() else {
+                return None;
+            };
+            let syn::Expr::Path(expr_path) = *expr.left else {
+                return None;
+            };
+            if !expr_path.path.is_ident("rename_all") {
+                return None;
+            }
+
+            match *expr.right {
+                syn::Expr::Lit(lit) => {
+                    match lit.lit {
+                        syn::Lit::Str(lit) => Some(lit.value()),
+                        _ => None, // Invalid rename_all attribute
+                    }
+                }
+                _ => None,
+            }
+        });
+        let rename_all = rename_all_attr
+            .map(|a| RenamePolicy::from_str(a.as_str()))
+            .transpose()?;
 
         // Check the enum has no borrowed lifetimes
         for param in &input.generics.params {
@@ -175,6 +321,8 @@ impl<'a> EnumDef<'a> {
             ident,
             generics,
             variants,
+            tag: tag_attr,
+            rename_all,
         })
     }
 
@@ -203,7 +351,7 @@ impl<'a> EnumDef<'a> {
         generics
     }
 
-    fn gen_deserialize_impl(&self) -> syn::Result<proc_macro2::TokenStream> {
+    fn gen_untagged_impl(&self) -> syn::Result<proc_macro2::TokenStream> {
         let enum_name = &self.ident;
         let generics = self.build_impl_generics();
         let (impl_generics, _, where_clause) = generics.split_for_impl();
@@ -238,6 +386,61 @@ impl<'a> EnumDef<'a> {
                 }
             }
         })
+    }
+
+    fn gen_internally_tagged_impl(&self) -> syn::Result<proc_macro2::TokenStream> {
+        let enum_name = &self.ident;
+        let tag_key = self.tag.as_ref().expect("Expected tag key");
+        let generics = self.build_impl_generics();
+        let (impl_generics, _, where_clause) = generics.split_for_impl();
+        let (_, ty_generics, _) = self.generics.split_for_impl();
+
+        let variant_arms = self
+            .variants
+            .iter()
+            .map(|variant| variant.gen_tagged_deserialize_arm(enum_name, self.rename_all))
+            .collect::<syn::Result<Vec<_>>>()?;
+        let variant_names = self
+            .variants
+            .iter()
+            .map(|variant| variant.get_name(self.rename_all))
+            .collect::<Vec<_>>();
+
+        Ok(quote! {
+            #[automatically_derived]
+            impl #impl_generics __serde::Deserialize<'de> for #enum_name #ty_generics #where_clause {
+                fn deserialize<__D>(deserializer: __D) -> Result<Self, __D::Error>
+                where
+                    __D: __serde::de::Deserializer<'de>,
+                {
+                    let (__tag, mut __state) = __serde_yaml::value::extract_tag_and_deserializer_state(deserializer, #tag_key)?;
+                    let __deserializer = __state.get_owned_deserializer();
+
+                    match __tag.as_str() {
+                        #( #variant_arms )*
+                        Some(tag) => {
+                            return Err(__serde::de::Error::unknown_variant(
+                                tag,
+                                &[ #( #variant_names ),* ]
+                             ));
+                        }
+                        None => {
+                            return Err(__serde::de::Error::invalid_value(
+                                __tag.unexpected(),
+                                &"a valid tag for internally tagged enum"
+                            ));
+                        }
+                    }
+                }
+            }
+        })
+    }
+
+    fn gen_deserialize_impl(&self) -> syn::Result<proc_macro2::TokenStream> {
+        match self.tag {
+            Some(_) => self.gen_internally_tagged_impl(),
+            None => self.gen_untagged_impl(),
+        }
     }
 }
 

@@ -1019,6 +1019,42 @@ fn test_untagged_enum() {
     assert_eq!(thing.v[1].span().end.line, 4);
 }
 
+#[test]
+fn test_tagged_enum() {
+    #[derive(Deserialize, PartialEq, Eq, Debug)]
+    struct Thing {
+        a: Verbatim<i32>,
+        b: Verbatim<Option<i32>>,
+        c: bool,
+    }
+
+    #[allow(clippy::large_enum_variant)]
+    #[derive(Deserialize, PartialEq, Eq, Debug)]
+    #[serde(tag = "type")]
+    #[serde(rename_all = "snake_case")]
+    enum Tagged {
+        String(String),
+        T(Thing),
+        Unit,
+    }
+
+    let yaml = indoc! {"
+        type: t
+        a: 1
+        c: false
+    "};
+    let value = dbt_serde_yaml::from_str::<Value>(yaml).unwrap();
+    let untagged = deserialize_value::<Tagged>(value, |_| Ok(None)).0;
+    assert_eq!(
+        untagged,
+        Tagged::T(Thing {
+            a: 1.into(),
+            b: None.into(),
+            c: false
+        })
+    );
+}
+
 #[cfg(feature = "flatten_dunder")]
 #[test]
 fn test_untagged_enum_flatten_dunder() {
