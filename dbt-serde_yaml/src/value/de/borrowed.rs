@@ -17,19 +17,17 @@ use crate::{
     Error, Mapping, Path, Sequence, Value,
 };
 
-use super::TransformedResult;
+use super::{FieldTransformer, UnusedKeyCallback};
 
-fn visit_sequence_ref<'p, 'u, 'de, V, U, F>(
+fn visit_sequence_ref<'de, 'p, 'u, 'f, V>(
     sequence: &'de Sequence,
     current_path: Path<'p>,
     visitor: V,
-    unused_key_callback: Option<&'u mut U>,
-    field_transformer: Option<&'u mut F>,
+    unused_key_callback: Option<UnusedKeyCallback<'u>>,
+    field_transformer: Option<FieldTransformer<'f>>,
 ) -> Result<V::Value, Error>
 where
     V: Visitor<'de>,
-    U: for<'a, 'v> FnMut(Path<'a>, &'v Value, &'v Value),
-    F: for<'v> FnMut(&'v Value) -> TransformedResult,
 {
     let len = sequence.len();
     let mut deserializer = SeqRefDeserializer::new_with(
@@ -47,17 +45,15 @@ where
     }
 }
 
-fn visit_mapping_ref<'p, 'u, 'de, V, U, F>(
+fn visit_mapping_ref<'de, 'p, 'u, 'f, V>(
     mapping: &'de Mapping,
     current_path: Path<'p>,
     visitor: V,
-    unused_key_callback: Option<&'u mut U>,
-    field_transformer: Option<&'u mut F>,
+    unused_key_callback: Option<UnusedKeyCallback<'u>>,
+    field_transformer: Option<FieldTransformer<'f>>,
 ) -> Result<V::Value, Error>
 where
     V: Visitor<'de>,
-    U: for<'a, 'v> FnMut(Path<'a>, &'v Value, &'v Value),
-    F: for<'v> FnMut(&'v Value) -> TransformedResult,
 {
     let len = mapping.len();
     let mut deserializer = MapRefDeserializer::new_with(
@@ -75,18 +71,16 @@ where
     }
 }
 
-fn visit_struct_ref<'p, 'u, 'de, V, U, F>(
+fn visit_struct_ref<'de, 'p, 'u, 'f, V>(
     mapping: &'de Mapping,
     current_path: Path<'p>,
     visitor: V,
     known_keys: &'static [&'static str],
-    unused_key_callback: Option<&'u mut U>,
-    field_transformer: Option<&'u mut F>,
+    unused_key_callback: Option<UnusedKeyCallback<'u>>,
+    field_transformer: Option<FieldTransformer<'f>>,
 ) -> Result<V::Value, Error>
 where
     V: Visitor<'de>,
-    U: for<'a, 'v> FnMut(Path<'a>, &'v Value, &'v Value),
-    F: for<'v> FnMut(&'v Value) -> TransformedResult,
 {
     let len = mapping.len();
     let mut deserializer = StructRefDeserializer::new_with(
@@ -346,19 +340,17 @@ impl<'de> Deserializer<'de> for &'de Value {
     }
 }
 
-pub struct ValueRefDeserializer<'p, 'f, 'de, U, F> {
+pub struct ValueRefDeserializer<'de, 'p, 'u, 'f> {
     value: &'de Value,
     path: Path<'p>,
-    unused_key_callback: Option<&'f mut U>,
-    field_transformer: Option<&'f mut F>,
+    unused_key_callback: Option<UnusedKeyCallback<'u>>,
+    field_transformer: Option<FieldTransformer<'f>>,
     // Flag indicating whether the value has been already been transformed by
     // field_transformer:
     is_transformed: bool,
 }
 
-impl<'p, 'de>
-    ValueRefDeserializer<'p, '_, 'de, fn(Path<'_>, &Value, &Value), fn(&Value) -> TransformedResult>
-{
+impl<'de> ValueRefDeserializer<'de, '_, '_, '_> {
     pub(crate) fn new(value: &'de Value) -> Self {
         ValueRefDeserializer {
             value,
@@ -370,16 +362,12 @@ impl<'p, 'de>
     }
 }
 
-impl<'p, 'u, 'de, U, F> ValueRefDeserializer<'p, 'u, 'de, U, F>
-where
-    U: for<'a, 'v> FnMut(Path<'a>, &'v Value, &'v Value),
-    F: for<'v> FnMut(&'v Value) -> TransformedResult,
-{
+impl<'de, 'p, 'u, 'f> ValueRefDeserializer<'de, 'p, 'u, 'f> {
     pub(crate) fn new_with(
         value: &'de Value,
         path: Path<'p>,
-        unused_key_callback: Option<&'u mut U>,
-        field_transformer: Option<&'u mut F>,
+        unused_key_callback: Option<UnusedKeyCallback<'u>>,
+        field_transformer: Option<FieldTransformer<'f>>,
     ) -> Self {
         ValueRefDeserializer {
             value,
@@ -393,8 +381,8 @@ where
     pub(crate) fn new_with_transformed(
         value: &'de Value,
         path: Path<'p>,
-        unused_key_callback: Option<&'u mut U>,
-        field_transformer: Option<&'u mut F>,
+        unused_key_callback: Option<UnusedKeyCallback<'u>>,
+        field_transformer: Option<FieldTransformer<'f>>,
     ) -> Self {
         ValueRefDeserializer {
             value,
@@ -426,11 +414,7 @@ macro_rules! maybe_transform_and_forward_to_value_deserializer {
 
 use super::maybe_why_not;
 
-impl<'de, U, F> Deserializer<'de> for ValueRefDeserializer<'_, '_, 'de, U, F>
-where
-    U: for<'a, 'v> FnMut(Path<'a>, &'v Value, &'v Value),
-    F: for<'v> FnMut(&'v Value) -> TransformedResult,
-{
+impl<'de, 'u, 'f> Deserializer<'de> for ValueRefDeserializer<'de, '_, 'u, 'f> {
     type Error = Error;
 
     fn deserialize_any<V>(mut self, visitor: V) -> Result<V::Value, Error>
@@ -446,8 +430,8 @@ where
                 save_deserializer_state(
                     Some(self.value.clone()),
                     self.path,
-                    self.unused_key_callback.map(|cb| Box::new(cb) as _),
-                    self.field_transformer.map(|cb| Box::new(cb) as _),
+                    self.unused_key_callback,
+                    self.field_transformer,
                 );
             }
             return Err(Error::custom("Value deserialized via fast path"));
@@ -942,21 +926,17 @@ where
     }
 }
 
-struct EnumRefDeserializer<'p, 'u, 'de, U, F> {
+struct EnumRefDeserializer<'de, 'p, 'u, 'f> {
     tag: &'de str,
     path: Path<'p>,
     value: Option<&'de Value>,
-    unused_key_callback: Option<&'u mut U>,
-    field_transformer: Option<&'u mut F>,
+    unused_key_callback: Option<UnusedKeyCallback<'u>>,
+    field_transformer: Option<FieldTransformer<'f>>,
 }
 
-impl<'p, 'u, 'de, U, F> EnumAccess<'de> for EnumRefDeserializer<'p, 'u, 'de, U, F>
-where
-    U: for<'a, 'v> FnMut(Path<'a>, &'v Value, &'v Value),
-    F: for<'v> FnMut(&'v Value) -> TransformedResult,
-{
+impl<'de, 'p, 'u, 'f> EnumAccess<'de> for EnumRefDeserializer<'de, 'p, 'u, 'f> {
     type Error = Error;
-    type Variant = VariantRefDeserializer<'p, 'u, 'de, U, F>;
+    type Variant = VariantRefDeserializer<'de, 'p, 'u, 'f>;
 
     fn variant_seed<V>(self, seed: V) -> Result<(V::Value, Self::Variant), Error>
     where
@@ -974,18 +954,14 @@ where
     }
 }
 
-struct VariantRefDeserializer<'p, 'u, 'de, U, F> {
+struct VariantRefDeserializer<'de, 'p, 'u, 'f> {
     value: Option<&'de Value>,
     path: Path<'p>,
-    unused_key_callback: Option<&'u mut U>,
-    field_transformer: Option<&'u mut F>,
+    unused_key_callback: Option<UnusedKeyCallback<'u>>,
+    field_transformer: Option<FieldTransformer<'f>>,
 }
 
-impl<'de, U, F> VariantAccess<'de> for VariantRefDeserializer<'_, '_, 'de, U, F>
-where
-    U: for<'a, 'v> FnMut(Path<'a>, &'v Value, &'v Value),
-    F: for<'v> FnMut(&'v Value) -> TransformedResult,
-{
+impl<'de> VariantAccess<'de> for VariantRefDeserializer<'de, '_, '_, '_> {
     type Error = Error;
 
     fn unit_variant(self) -> Result<(), Error> {
@@ -1063,11 +1039,7 @@ where
     }
 }
 
-impl<'de, U, F> VariantAccess<'de> for ValueRefDeserializer<'_, '_, 'de, U, F>
-where
-    U: for<'a, 'v> FnMut(Path<'a>, &'v Value, &'v Value),
-    F: for<'v> FnMut(&'v Value) -> TransformedResult,
-{
+impl<'de> VariantAccess<'de> for ValueRefDeserializer<'de, '_, '_, '_> {
     type Error = Error;
 
     fn unit_variant(self) -> Result<(), Error> {
@@ -1131,17 +1103,15 @@ where
     }
 }
 
-pub(crate) struct SeqRefDeserializer<'p, 'u, 'de, U, F> {
+pub(crate) struct SeqRefDeserializer<'de, 'p, 'u, 'f> {
     iter: slice::Iter<'de, Value>,
     path: Path<'p>,
     current_idx: usize,
-    unused_key_callback: Option<&'u mut U>,
-    field_transformer: Option<&'u mut F>,
+    unused_key_callback: Option<UnusedKeyCallback<'u>>,
+    field_transformer: Option<FieldTransformer<'f>>,
 }
 
-impl<'p, 'u, 'de>
-    SeqRefDeserializer<'p, 'u, 'de, fn(Path<'_>, &Value, &Value), fn(&Value) -> TransformedResult>
-{
+impl<'de> SeqRefDeserializer<'de, '_, '_, '_> {
     pub(crate) fn new(slice: &'de [Value]) -> Self {
         SeqRefDeserializer {
             iter: slice.iter(),
@@ -1153,12 +1123,12 @@ impl<'p, 'u, 'de>
     }
 }
 
-impl<'p, 'u, 'de, U, F> SeqRefDeserializer<'p, 'u, 'de, U, F> {
+impl<'de, 'p, 'u, 'f> SeqRefDeserializer<'de, 'p, 'u, 'f> {
     pub(crate) fn new_with(
         slice: &'de [Value],
         current_path: Path<'p>,
-        unused_key_callback: Option<&'u mut U>,
-        field_transformer: Option<&'u mut F>,
+        unused_key_callback: Option<UnusedKeyCallback<'u>>,
+        field_transformer: Option<FieldTransformer<'f>>,
     ) -> Self {
         SeqRefDeserializer {
             iter: slice.iter(),
@@ -1170,11 +1140,7 @@ impl<'p, 'u, 'de, U, F> SeqRefDeserializer<'p, 'u, 'de, U, F> {
     }
 }
 
-impl<'de, U, F> Deserializer<'de> for SeqRefDeserializer<'_, '_, 'de, U, F>
-where
-    U: for<'a, 'v> FnMut(Path<'a>, &'v Value, &'v Value),
-    F: for<'v> FnMut(&'v Value) -> TransformedResult,
-{
+impl<'de> Deserializer<'de> for SeqRefDeserializer<'de, '_, '_, '_> {
     type Error = Error;
 
     #[inline]
@@ -1212,11 +1178,7 @@ where
     }
 }
 
-impl<'de, U, F> SeqAccess<'de> for SeqRefDeserializer<'_, '_, 'de, U, F>
-where
-    U: for<'a, 'v> FnMut(Path<'a>, &'v Value, &'v Value),
-    F: for<'v> FnMut(&'v Value) -> TransformedResult,
-{
+impl<'de> SeqAccess<'de> for SeqRefDeserializer<'de, '_, '_, '_> {
     type Error = Error;
 
     fn next_element_seed<T>(&mut self, seed: T) -> Result<Option<T::Value>, Error>
@@ -1234,8 +1196,12 @@ where
                         parent: &self.path,
                         index: self.current_idx - 1,
                     },
-                    self.unused_key_callback.as_deref_mut(),
-                    self.field_transformer.as_deref_mut(),
+                    self.unused_key_callback
+                        .as_deref_mut()
+                        .map(|cb| &mut *cb as UnusedKeyCallback<'_>),
+                    self.field_transformer
+                        .as_deref_mut()
+                        .map(|ft| &mut *ft as FieldTransformer<'_>),
                 );
                 seed.deserialize(deserializer)
                     .map(Some)
@@ -1253,18 +1219,16 @@ where
     }
 }
 
-pub(crate) struct MapRefDeserializer<'p, 'u, 'de, U, F> {
+pub(crate) struct MapRefDeserializer<'de, 'p, 'u, 'f> {
     iter: Option<Box<dyn Iterator<Item = (&'de Value, &'de Value)> + 'de>>,
     current_key: Option<String>,
     path: Path<'p>,
     value: Option<&'de Value>,
-    unused_key_callback: Option<&'u mut U>,
-    field_transformer: Option<&'u mut F>,
+    unused_key_callback: Option<UnusedKeyCallback<'u>>,
+    field_transformer: Option<FieldTransformer<'f>>,
 }
 
-impl<'p, 'u, 'de>
-    MapRefDeserializer<'p, 'u, 'de, fn(Path<'_>, &Value, &Value), fn(&Value) -> TransformedResult>
-{
+impl<'de> MapRefDeserializer<'de, '_, '_, '_> {
     pub(crate) fn new(map: &'de Mapping) -> Self {
         MapRefDeserializer {
             iter: Some(Box::new(map.iter())),
@@ -1275,7 +1239,9 @@ impl<'p, 'u, 'de>
             field_transformer: None,
         }
     }
+}
 
+impl<'de, 'p, 'u, 'f> MapRefDeserializer<'de, 'p, 'u, 'f> {
     pub(crate) fn new_empty(path: Path<'p>) -> Self {
         MapRefDeserializer {
             iter: None,
@@ -1286,18 +1252,12 @@ impl<'p, 'u, 'de>
             field_transformer: None,
         }
     }
-}
 
-impl<'p, 'u, 'de, U, F> MapRefDeserializer<'p, 'u, 'de, U, F>
-where
-    U: for<'a, 'v> FnMut(Path<'a>, &'v Value, &'v Value),
-    F: for<'v> FnMut(&'v Value) -> TransformedResult,
-{
     pub(crate) fn new_with(
         map: &'de Mapping,
         path: Path<'p>,
-        unused_key_callback: Option<&'u mut U>,
-        field_transformer: Option<&'u mut F>,
+        unused_key_callback: Option<UnusedKeyCallback<'u>>,
+        field_transformer: Option<FieldTransformer<'f>>,
     ) -> Self {
         MapRefDeserializer {
             iter: Some(Box::new(map.iter())),
@@ -1310,11 +1270,7 @@ where
     }
 }
 
-impl<'de, U, F> MapAccess<'de> for MapRefDeserializer<'_, '_, 'de, U, F>
-where
-    U: for<'a, 'v> FnMut(Path<'a>, &'v Value, &'v Value),
-    F: for<'v> FnMut(&'v Value) -> TransformedResult,
-{
+impl<'de> MapAccess<'de> for MapRefDeserializer<'de, '_, '_, '_> {
     type Error = Error;
 
     fn next_key_seed<T>(&mut self, seed: T) -> Result<Option<T::Value>, Error>
@@ -1346,8 +1302,12 @@ where
                     },
                     None => Path::Unknown { parent: &self.path },
                 },
-                self.unused_key_callback.as_deref_mut(),
-                self.field_transformer.as_deref_mut(),
+                self.unused_key_callback
+                    .as_deref_mut()
+                    .map(|cb| &mut *cb as UnusedKeyCallback<'_>),
+                self.field_transformer
+                    .as_deref_mut()
+                    .map(|cb| &mut *cb as FieldTransformer<'_>),
             )),
             None => panic!("visit_value called before visit_key"),
         }
@@ -1361,11 +1321,7 @@ where
     }
 }
 
-impl<'p, 'de, U, F> Deserializer<'de> for MapRefDeserializer<'p, '_, 'de, U, F>
-where
-    U: for<'a, 'v> FnMut(Path<'a>, &'v Value, &'v Value),
-    F: for<'v> FnMut(&'v Value) -> TransformedResult,
-{
+impl<'de> Deserializer<'de> for MapRefDeserializer<'de, '_, '_, '_> {
     type Error = Error;
 
     #[inline]
@@ -1387,8 +1343,8 @@ where
                 save_deserializer_state(
                     Some(value),
                     self.path,
-                    self.unused_key_callback.map(|cb| Box::new(cb) as _),
-                    self.field_transformer.map(|cb| Box::new(cb) as _),
+                    self.unused_key_callback,
+                    self.field_transformer,
                 );
             }
             return Err(Error::custom("Value deserialized via fast path"));
@@ -1438,30 +1394,26 @@ where
     }
 }
 
-pub(crate) struct StructRefDeserializer<'p, 'u, 'de, U, F> {
+pub(crate) struct StructRefDeserializer<'de, 'p, 'u, 'f> {
     iter: Option<Box<dyn Iterator<Item = (&'de Value, &'de Value)> + 'de>>,
     current_key: Option<String>,
     path: Path<'p>,
     value: Option<&'de Value>,
     normal_keys: HashSet<&'static str>,
     flatten_keys: Vec<&'static str>,
-    unused_key_callback: Option<&'u mut U>,
-    field_transformer: Option<&'u mut F>,
+    unused_key_callback: Option<UnusedKeyCallback<'u>>,
+    field_transformer: Option<FieldTransformer<'f>>,
     rest: Vec<(&'de Value, &'de Value)>,
     flatten_keys_done: usize,
 }
 
-impl<'p, 'u, 'de, U, F> StructRefDeserializer<'p, 'u, 'de, U, F>
-where
-    U: for<'a, 'v> FnMut(Path<'a>, &'v Value, &'v Value),
-    F: for<'v> FnMut(&'v Value) -> TransformedResult,
-{
+impl<'de, 'p, 'u, 'f> StructRefDeserializer<'de, 'p, 'u, 'f> {
     pub(crate) fn new_with(
         map: &'de Mapping,
         current_path: Path<'p>,
         known_keys: &'static [&'static str],
-        unused_key_callback: Option<&'u mut U>,
-        field_transformer: Option<&'u mut F>,
+        unused_key_callback: Option<UnusedKeyCallback<'u>>,
+        field_transformer: Option<FieldTransformer<'f>>,
     ) -> Self {
         let (normal_keys, flatten_keys): (Vec<_>, Vec<_>) = known_keys
             .iter()
@@ -1490,11 +1442,7 @@ where
     }
 }
 
-impl<'p, 'de, U, F> MapAccess<'de> for StructRefDeserializer<'p, '_, 'de, U, F>
-where
-    U: for<'a, 'v> FnMut(Path<'a>, &'v Value, &'v Value),
-    F: for<'v> FnMut(&'v Value) -> TransformedResult,
-{
+impl<'de> MapAccess<'de> for StructRefDeserializer<'de, '_, '_, '_> {
     type Error = Error;
 
     fn next_key_seed<T>(&mut self, seed: T) -> Result<Option<T::Value>, Error>
@@ -1558,8 +1506,12 @@ where
                     },
                     None => Path::Unknown { parent: &self.path },
                 },
-                self.unused_key_callback.as_deref_mut(),
-                self.field_transformer.as_deref_mut(),
+                self.unused_key_callback
+                    .as_deref_mut()
+                    .map(|cb| &mut *cb as UnusedKeyCallback<'_>),
+                self.field_transformer
+                    .as_deref_mut()
+                    .map(|cb| &mut *cb as FieldTransformer<'_>),
             )),
             None if self.has_unprocessed_flatten_keys() => {
                 self.flatten_keys_done += 1;
@@ -1578,7 +1530,9 @@ where
                         Some(Box::new(flattened.into_iter())),
                         path,
                         &mut self.rest,
-                        self.field_transformer.as_deref_mut(),
+                        self.field_transformer
+                            .as_deref_mut()
+                            .map(|cb| &mut *cb as FieldTransformer<'_>),
                     );
 
                     seed.deserialize(deserializer)
@@ -1588,8 +1542,14 @@ where
                         current_key: None,
                         path,
                         value: None,
-                        unused_key_callback: self.unused_key_callback.as_deref_mut(),
-                        field_transformer: self.field_transformer.as_deref_mut(),
+                        unused_key_callback: self
+                            .unused_key_callback
+                            .as_deref_mut()
+                            .map(|cb| &mut *cb as UnusedKeyCallback<'_>),
+                        field_transformer: self
+                            .field_transformer
+                            .as_deref_mut()
+                            .map(|cb| &mut *cb as FieldTransformer<'_>),
                     };
                     seed.deserialize(deserializer)
                 }
@@ -1606,11 +1566,7 @@ where
     }
 }
 
-impl<'p, 'de, U, F> Deserializer<'de> for StructRefDeserializer<'p, '_, 'de, U, F>
-where
-    U: for<'a, 'v> FnMut(Path<'a>, &'v Value, &'v Value),
-    F: for<'v> FnMut(&'v Value) -> TransformedResult,
-{
+impl<'de> Deserializer<'de> for StructRefDeserializer<'de, '_, '_, '_> {
     type Error = Error;
 
     #[inline]
@@ -1637,22 +1593,19 @@ where
     }
 }
 
-struct FlattenRefDeserializer<'p, 'u, 'r, 'de, F> {
+struct FlattenRefDeserializer<'de, 'p, 'r, 'f> {
     iter: Option<Box<dyn Iterator<Item = (&'de Value, &'de Value)> + 'de>>,
     path: Path<'p>,
     remaining: &'r mut Vec<(&'de Value, &'de Value)>,
-    field_transformer: Option<&'u mut F>,
+    field_transformer: Option<FieldTransformer<'f>>,
 }
 
-impl<'p, 'u, 'r, 'de, F> FlattenRefDeserializer<'p, 'u, 'r, 'de, F>
-where
-    F: for<'v> FnMut(&'v Value) -> TransformedResult,
-{
+impl<'de, 'p, 'r, 'f> FlattenRefDeserializer<'de, 'p, 'r, 'f> {
     pub(crate) fn new(
         iter: Option<Box<dyn Iterator<Item = (&'de Value, &'de Value)> + 'de>>,
         current_path: Path<'p>,
         remaining: &'r mut Vec<(&'de Value, &'de Value)>,
-        field_transformer: Option<&'u mut F>,
+        field_transformer: Option<FieldTransformer<'f>>,
     ) -> Self {
         FlattenRefDeserializer {
             iter,
@@ -1663,13 +1616,10 @@ where
     }
 }
 
-impl<'p, 'u, 'r, 'de, F> Deserializer<'de> for FlattenRefDeserializer<'p, 'u, 'r, 'de, F>
-where
-    F: for<'v> FnMut(&'v Value) -> TransformedResult,
-{
+impl<'de> Deserializer<'de> for FlattenRefDeserializer<'de, '_, '_, '_> {
     type Error = Error;
 
-    fn deserialize_any<V>(mut self, visitor: V) -> Result<V::Value, Error>
+    fn deserialize_any<V>(self, visitor: V) -> Result<V::Value, Error>
     where
         V: Visitor<'de>,
     {
@@ -1696,7 +1646,7 @@ where
                     // FIXME: we can't propagate the collect_unused callback
                     // because it's internally unsafe:
                     None,
-                    self.field_transformer.map(|cb| Box::new(cb) as _),
+                    self.field_transformer,
                 );
             }
             return Err(Error::custom("Value deserialized via fast path"));
@@ -1708,7 +1658,7 @@ where
             path: self.path,
             value: None,
             unused_key_callback: Some(&mut collect_unused),
-            field_transformer: self.field_transformer.as_deref_mut(),
+            field_transformer: self.field_transformer,
         };
         visitor.visit_map(deserializer)
     }

@@ -9,7 +9,6 @@ mod ser;
 pub(crate) mod tagged;
 
 use crate::error::{self, Error, ErrorImpl};
-use crate::path::Path;
 use crate::{spanned, Span};
 use serde::de::{Deserialize, DeserializeOwned, IntoDeserializer};
 use serde::Serialize;
@@ -28,6 +27,7 @@ pub(crate) use de::ValueVisitor;
 pub use de::extract_reusable_deserializer_state;
 pub use de::extract_tag_and_deserializer_state;
 pub use de::DeserializerState;
+pub use de::DuplicateKeyCallback;
 pub use de::FieldTransformer;
 pub use de::TransformedResult;
 pub use de::UnusedKeyCallback;
@@ -840,12 +840,7 @@ impl Hash for Value {
 }
 
 impl IntoDeserializer<'_, Error> for Value {
-    type Deserializer = de::ValueDeserializer<
-        'static,
-        'static,
-        fn(Path<'_>, &Value, &Value),
-        fn(&Value) -> de::TransformedResult,
-    >;
+    type Deserializer = de::ValueDeserializer<'static, 'static, 'static>;
 
     fn into_deserializer(self) -> Self::Deserializer {
         de::ValueDeserializer::new(self)

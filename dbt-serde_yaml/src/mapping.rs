@@ -1,7 +1,7 @@
 //! A YAML mapping and its iterator types.
 
 use crate::path::Path;
-use crate::value::ValueVisitor;
+use crate::value::{DuplicateKeyCallback, ValueVisitor};
 use crate::{private, Value};
 use indexmap::IndexMap;
 use serde::{Deserialize, Deserializer, Serialize};
@@ -826,15 +826,12 @@ pub enum DuplicateKey {
     Overwrite,
 }
 
-pub(crate) struct MappingVisitor<'a, 'b, F: FnMut(Path<'_>, &Value, &Value) -> DuplicateKey> {
-    pub callback: &'a mut F,
+pub(crate) struct MappingVisitor<'d, 'b> {
+    pub callback: DuplicateKeyCallback<'d>,
     pub path: Path<'b>,
 }
 
-impl<'de, F> serde::de::Visitor<'de> for MappingVisitor<'_, '_, F>
-where
-    F: FnMut(Path<'_>, &Value, &Value) -> DuplicateKey,
-{
+impl<'de> serde::de::Visitor<'de> for MappingVisitor<'_, '_> {
     type Value = Mapping;
 
     fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
