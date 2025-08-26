@@ -20,6 +20,16 @@ pub use owned::ValueDeserializer;
 pub type TransformedResult =
     Result<Option<Value>, Box<dyn std::error::Error + 'static + Send + Sync>>;
 
+/// A callback type for handling duplicate keys during deserialization.
+pub type DuplicateKeyCallback<'d> =
+    &'d mut dyn for<'p, 'v> FnMut(Path<'p>, &'v Value, &'v Value) -> DuplicateKey;
+
+/// A callback type for handling unused keys during deserialization.
+pub type UnusedKeyCallback<'u> = &'u mut dyn for<'p, 'v> FnMut(Path<'p>, &'v Value, &'v Value);
+
+/// A transformer function for modifying field values during deserialization.
+pub type FieldTransformer<'f> = &'f mut dyn for<'v> FnMut(&'v Value) -> TransformedResult;
+
 impl Value {
     /// Deserialize a [Value] from a string of YAML text.
     pub fn from_str<F>(s: &str, duplicate_key_callback: F) -> Result<Self, Error>
@@ -101,15 +111,12 @@ impl Value {
     }
 }
 
-pub(crate) struct ValueVisitor<'a, 'b, F: FnMut(Path<'_>, &Value, &Value) -> DuplicateKey> {
-    pub callback: &'a mut F,
+pub(crate) struct ValueVisitor<'d, 'b> {
+    pub callback: DuplicateKeyCallback<'d>,
     pub path: Path<'b>,
 }
 
-impl<'de, F> serde::de::Visitor<'de> for ValueVisitor<'_, '_, F>
-where
-    F: FnMut(Path<'_>, &Value, &Value) -> DuplicateKey,
-{
+impl<'de> serde::de::Visitor<'de> for ValueVisitor<'_, '_> {
     type Value = Value;
 
     fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
@@ -215,10 +222,7 @@ where
     }
 }
 
-impl<'de, F> DeserializeSeed<'de> for ValueVisitor<'_, '_, F>
-where
-    F: FnMut(Path<'_>, &Value, &Value) -> DuplicateKey,
-{
+impl<'de> DeserializeSeed<'de> for ValueVisitor<'_, '_> {
     type Value = Value;
 
     fn deserialize<D>(self, deserializer: D) -> Result<Self::Value, D::Error>
@@ -236,15 +240,12 @@ where
     }
 }
 
-struct SequenceVisitor<'a, 'b, F> {
-    pub callback: &'a mut F,
+struct SequenceVisitor<'d, 'b> {
+    pub callback: DuplicateKeyCallback<'d>,
     pub path: Path<'b>,
 }
 
-impl<'de, F> serde::de::Visitor<'de> for SequenceVisitor<'_, '_, F>
-where
-    F: FnMut(Path<'_>, &Value, &Value) -> DuplicateKey,
-{
+impl<'de> serde::de::Visitor<'de> for SequenceVisitor<'_, '_> {
     type Value = Sequence;
 
     fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
@@ -473,11 +474,6 @@ where
         _ => Err(D::Error::custom("Expected a mapping")),
     }
 }
-/// A callback type for handling unused keys during deserialization.
-pub type UnusedKeyCallback<'u> = Box<dyn for<'p, 'v> FnMut(Path<'p>, &'v Value, &'v Value) + 'u>;
-
-/// A transformer function for modifying field values during deserialization.
-pub type FieldTransformer<'f> = Box<dyn for<'v> FnMut(&'v Value) -> TransformedResult + 'f>;
 
 /// Captures the state of a [Value] deserializer
 pub struct DeserializerState {
@@ -504,15 +500,14 @@ impl DeserializerState {
     }
 
     /// Constructs a Value [Deserializer] from the captured state
-    pub fn get_deserializer<'de, 'u, U>(
+    pub fn get_deserializer<'de, 'u>(
         &'de mut self,
-        unused_key_callback: Option<&'u mut U>,
-    ) -> ValueRefDeserializer<'de, 'u, 'de, U, FieldTransformer<'static>>
-    where
-        'de: 'u,
-        U: for<'v> FnMut(Path<'_>, &'v Value, &'v Value),
-    {
-        let field_transformer = self.field_transformer.as_mut();
+        unused_key_callback: Option<UnusedKeyCallback<'u>>,
+    ) -> ValueRefDeserializer<'de, 'de, 'u, 'de> {
+        let field_transformer = self
+            .field_transformer
+            .as_deref_mut()
+            .map(|cb| &mut *cb as FieldTransformer<'_>);
 
         ValueRefDeserializer::new_with(
             &self.value,
@@ -523,21 +518,18 @@ impl DeserializerState {
     }
 
     /// Constructs a Value [Deserializer] from the captured state
-    pub fn get_owned_deserializer<'de, 'u>(
-        &'de mut self,
-    ) -> ValueDeserializer<'de, 'u, UnusedKeyCallback<'static>, FieldTransformer<'static>>
-    where
-        'de: 'u,
-    {
+    pub fn get_owned_deserializer<'de>(&'de mut self) -> ValueDeserializer<'de, 'de, 'de> {
         let value = std::mem::take(&mut self.value);
-        let unused_key_callback = self.unused_key_callback.as_mut();
-        let field_transformer = self.field_transformer.as_mut();
 
         ValueDeserializer::new_with(
             value,
             *self.path.as_path(),
-            unused_key_callback,
-            field_transformer,
+            self.unused_key_callback
+                .as_deref_mut()
+                .map(|cb| &mut *cb as UnusedKeyCallback<'_>),
+            self.field_transformer
+                .as_deref_mut()
+                .map(|cb| &mut *cb as FieldTransformer<'_>),
         )
     }
 

@@ -1,4 +1,3 @@
-use crate::path::Path;
 use crate::value::de::{MapRefDeserializer, SeqRefDeserializer};
 use crate::value::Value;
 use crate::Error;
@@ -251,12 +250,7 @@ impl<'de> Deserializer<'de> for TaggedValue {
 
 impl<'de> EnumAccess<'de> for TaggedValue {
     type Error = Error;
-    type Variant = ValueDeserializer<
-        'static,
-        'static,
-        fn(Path<'_>, &Value, &Value),
-        fn(&Value) -> super::de::TransformedResult,
-    >;
+    type Variant = ValueDeserializer<'static, 'static, 'static>;
 
     fn variant_seed<V>(self, seed: V) -> Result<(V::Value, Self::Variant), Error>
     where
