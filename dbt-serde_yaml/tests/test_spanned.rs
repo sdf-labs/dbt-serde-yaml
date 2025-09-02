@@ -13,7 +13,7 @@ fn test_spanned_basic() {
         y: u64,
     }
 
-    let v = Spanned::new(Point { x: 10, y: 20 });
+    let v: Spanned<Point> = Point { x: 10, y: 20 }.into();
     assert_eq!(v.x, 10);
 
     #[derive(Deserialize, PartialEq, Debug, Hash, Eq, Clone)]

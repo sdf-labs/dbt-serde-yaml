@@ -2,7 +2,7 @@
 
 use serde::{ser::Serializer, Deserialize, Deserializer, Serialize};
 use std::{
-    fmt::{self, Debug},
+    fmt::{self, Debug, Display},
     hash::{Hash, Hasher},
     ops::Deref,
 };
@@ -117,6 +117,15 @@ where
     }
 }
 
+impl<'de, T> From<T> for Spanned<T>
+where
+    T: Deserialize<'de>,
+{
+    fn from(node: T) -> Self {
+        Spanned::new(node)
+    }
+}
+
 impl<T> PartialEq for Spanned<T>
 where
     T: PartialEq,
@@ -152,6 +161,15 @@ where
 {
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.node.hash(state);
+    }
+}
+
+impl<T> Display for Spanned<T>
+where
+    T: Display,
+{
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        <T as Display>::fmt(&self.node, f)
     }
 }
 
