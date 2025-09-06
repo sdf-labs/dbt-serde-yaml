@@ -1,6 +1,6 @@
 use std::collections::HashSet;
 
-use dbt_serde_yaml::Spanned;
+use dbt_serde_yaml::{Span, Spanned, UntaggedEnumDeserialize};
 use indoc::indoc;
 use serde::Deserialize as _;
 use serde_derive::{Deserialize, Serialize};
@@ -144,6 +144,24 @@ fn test_spanned_de_from_value() {
     #[derive(Deserialize, Debug, PartialEq, Eq)]
     struct Thing;
 
+    #[derive(UntaggedEnumDeserialize)]
+    #[serde(untagged)]
+    enum Inner {
+        S(Spanned<String>),
+        I(Spanned<i32>),
+        T(Spanned<Vec<Thing>>),
+    }
+
+    impl Inner {
+        fn span(&self) -> &Span {
+            match self {
+                Inner::S(spanned) => spanned.span(),
+                Inner::I(spanned) => spanned.span(),
+                Inner::T(spanned) => spanned.span(),
+            }
+        }
+    }
+
     #[derive(Deserialize)]
     struct Point {
         x: Spanned<f64>,
@@ -151,6 +169,7 @@ fn test_spanned_de_from_value() {
         a: Spanned<Option<f64>>,
         t: Spanned<Thing>,
         v: Spanned<Vec<Spanned<String>>>,
+        w: Spanned<Vec<Inner>>,
     }
 
     let yaml = indoc! {"
@@ -161,6 +180,9 @@ fn test_spanned_de_from_value() {
         v:
           - aaa
           - bbb
+        w:
+          - ccc
+          - 1
     "};
 
     let value: dbt_serde_yaml::Value = dbt_serde_yaml::from_str(yaml).unwrap();
@@ -169,7 +191,7 @@ fn test_spanned_de_from_value() {
     assert!(point.has_valid_span());
     assert_eq!(point.span().start.line, 1);
     assert_eq!(point.span().start.column, 1);
-    assert_eq!(point.span().end.line, 8);
+    assert_eq!(point.span().end.line, 11);
     assert_eq!(point.span().end.column, 1);
 
     assert_eq!(*point.x, 1.0);
@@ -202,6 +224,15 @@ fn test_spanned_de_from_value() {
     assert_eq!(point.v[1].span().start.column, 5);
     assert_eq!(point.v[1].span().end.line, 8);
     assert_eq!(point.v[1].span().end.column, 1);
+
+    assert_eq!(point.w[0].span().start.line, 9);
+    assert_eq!(point.w[0].span().start.column, 5);
+    assert_eq!(point.w[0].span().end.line, 10);
+    assert_eq!(point.w[0].span().end.column, 5);
+    assert_eq!(point.w[1].span().start.line, 10);
+    assert_eq!(point.w[1].span().start.column, 5);
+    assert_eq!(point.w[1].span().end.line, 11);
+    assert_eq!(point.w[1].span().end.column, 1);
 }
 
 #[allow(dead_code)]
