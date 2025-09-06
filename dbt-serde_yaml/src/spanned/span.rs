@@ -8,7 +8,7 @@ use std::sync::Arc;
 use crate::libyaml::error::Mark;
 
 /// A source span.
-#[derive(Clone, PartialEq, PartialOrd)]
+#[derive(Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Span {
     /// The start of the span.
     pub start: Marker,
@@ -131,7 +131,7 @@ impl From<Marker> for Span {
 }
 
 /// A location in the source string.
-#[derive(Copy, Clone, PartialEq, PartialOrd)]
+#[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Marker {
     /// Offset in bytes from the start of the source string.
     pub index: usize,

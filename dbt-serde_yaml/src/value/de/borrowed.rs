@@ -352,13 +352,7 @@ pub struct ValueRefDeserializer<'de, 'p, 'u, 'f> {
 
 impl<'de> ValueRefDeserializer<'de, '_, '_, '_> {
     pub(crate) fn new(value: &'de Value) -> Self {
-        ValueRefDeserializer {
-            value,
-            path: Path::Root,
-            unused_key_callback: None,
-            field_transformer: None,
-            is_transformed: false,
-        }
+        ValueRefDeserializer::new_with(value, Path::Root, None, None)
     }
 }
 
@@ -369,6 +363,8 @@ impl<'de, 'p, 'u, 'f> ValueRefDeserializer<'de, 'p, 'u, 'f> {
         unused_key_callback: Option<UnusedKeyCallback<'u>>,
         field_transformer: Option<FieldTransformer<'f>>,
     ) -> Self {
+        value.broadcast_start_mark();
+
         ValueRefDeserializer {
             value,
             path,
@@ -1189,7 +1185,6 @@ impl<'de> SeqAccess<'de> for SeqRefDeserializer<'de, '_, '_, '_> {
         match self.iter.next() {
             Some(value) => {
                 let span = value.span();
-                value.broadcast_start_mark();
                 let deserializer = ValueRefDeserializer::new_with(
                     value,
                     Path::Seq {
