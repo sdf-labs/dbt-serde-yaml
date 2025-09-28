@@ -1277,7 +1277,8 @@ impl<'de> MapAccess<'de> for MapRefDeserializer<'de, '_, '_, '_> {
             Some((key, value)) => {
                 self.value = Some(value);
                 self.current_key = key.as_str().map(String::from);
-                seed.deserialize(key).map(Some)
+                let deserializer = ValueRefDeserializer::new_with(key, self.path, None, None);
+                seed.deserialize(deserializer).map(Some)
             }
             None => Ok(None),
         }

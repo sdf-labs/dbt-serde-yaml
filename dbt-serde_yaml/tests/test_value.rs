@@ -383,23 +383,24 @@ fn test_debug() {
     let value: Value = dbt_serde_yaml::from_str(yaml).unwrap();
     assert!(value.span().is_valid());
     let debug = format!("{:#?}", value);
+    eprintln!("{debug}");
 
     let expected = indoc! {r#"
-        Mapping {
-            "Null": Null,
-            "Bool": Bool(true),
-            "Number": Number(1),
-            "String": String("..."),
-            "Sequence": Sequence [
-                Bool(true),
-            ],
-            "EmptySequence": Sequence [],
-            "EmptyMapping": Mapping {},
-            "Tagged": TaggedValue {
-                tag: !tag,
-                value: Bool(true),
-            },
-        }"#
+Mapping {
+    String("Null") @{1:1[0]..1:9[8]}: Null @{1:9[8]..2:1[10]},
+    String("Bool") @{2:1[10]..2:7[16]}: Bool(true) @{2:7[16]..3:1[21]},
+    String("Number") @{3:1[21]..3:9[29]}: Number(1) @{3:9[29]..4:1[31]},
+    String("String") @{4:1[31]..4:9[39]}: String("...") @{4:9[39]..5:1[43]},
+    String("Sequence") @{5:1[43]..6:3[55]}: Sequence [
+        Bool(true) @{6:5[57]..7:1[62]},
+    ] @{6:3[55]..7:1[62]},
+    String("EmptySequence") @{7:1[62]..7:16[77]}: Sequence [] @{7:16[77]..8:1[80]},
+    String("EmptyMapping") @{8:1[80]..8:15[94]}: Mapping {} @{8:15[94]..9:1[97]},
+    String("Tagged") @{9:1[97]..9:9[105]}: TaggedValue {
+        tag: !tag,
+        value: Bool(true) @{10:1[115]..10:1[115]},
+    } @{9:9[105]..10:1[115]},
+} @{1:1[0]..10:1[115]}"#
     };
 
     assert_eq!(debug, expected);
