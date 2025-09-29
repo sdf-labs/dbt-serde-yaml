@@ -235,6 +235,46 @@ fn test_spanned_de_from_value() {
     assert_eq!(point.w[1].span().end.column, 1);
 }
 
+#[test]
+fn test_value_to_value_span() {
+    let yaml = indoc! {"
+        key:
+          - name: hello
+            nested:
+              key1:
+                - item1
+              key2: value2
+        "};
+
+    #[derive(Deserialize, Debug)]
+    struct Root {
+        key: Vec<Spanned<dbt_serde_yaml::Value>>,
+    }
+
+    let value: dbt_serde_yaml::Value = dbt_serde_yaml::from_str(yaml).unwrap();
+    let expected = r#"[
+    {2:5[9]..7:1[80]} Mapping {
+        String("name") @{2:5[9]..2:11[15]}: String("hello") @{2:11[15]..3:5[25]},
+        String("nested") @{3:5[25]..4:7[39]}: Mapping {
+            String("key1") @{4:7[39]..5:9[53]}: Sequence [
+                String("item1") @{5:11[55]..6:7[67]},
+            ] @{5:9[53]..6:7[67]},
+            String("key2") @{6:7[67]..6:13[73]}: String("value2") @{6:13[73]..7:1[80]},
+        } @{4:7[39]..7:1[80]},
+    } @{2:5[9]..7:1[80]},
+]"#;
+
+    let root: Spanned<Root> = value.to_typed(|_, _, _| {}, |_| Ok(None)).unwrap();
+    let root_repr = format!("{:#?}", root.key);
+    eprintln!("{root_repr}");
+    assert_eq!(root_repr, expected);
+
+    let root: Spanned<Root> = value.into_typed(|_, _, _| {}, |_| Ok(None)).unwrap();
+    let root_repr = format!("{:#?}", root.key);
+    eprintln!("{root_repr}");
+    assert_eq!(root_repr, expected);
+}
+
 #[allow(dead_code)]
 fn my_custom_deserialize<'de, D>(deserializer: D) -> Result<Spanned<f64>, D::Error>
 where

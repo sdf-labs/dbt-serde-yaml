@@ -1,6 +1,6 @@
 use crate::mapping::Mapping;
 use crate::value::{Number, Value};
-use std::fmt::{self, Debug, Display};
+use std::fmt::{self, Debug};
 
 impl Debug for Value {
     fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
@@ -16,15 +16,8 @@ impl Debug for Value {
             }
             Value::Mapping(mapping, ..) => Debug::fmt(mapping, formatter),
             Value::Tagged(tagged, ..) => Debug::fmt(tagged, formatter),
-        }
-    }
-}
-
-struct DisplayNumber<'a>(&'a Number);
-
-impl Debug for DisplayNumber<'_> {
-    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-        Display::fmt(self.0, formatter)
+        }?;
+        write!(formatter, " @{{{:?}}}", self.span())
     }
 }
 
@@ -39,19 +32,7 @@ impl Debug for Mapping {
         formatter.write_str("Mapping ")?;
         let mut debug = formatter.debug_map();
         for (k, v) in self {
-            let tmp;
-            debug.entry(
-                match k {
-                    Value::Bool(boolean, ..) => boolean,
-                    Value::Number(number, ..) => {
-                        tmp = DisplayNumber(number);
-                        &tmp
-                    }
-                    Value::String(string, ..) => string,
-                    _ => k,
-                },
-                v,
-            );
+            debug.entry(k, v);
         }
         debug.finish()
     }

@@ -101,7 +101,8 @@ where
     T: Debug,
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{:?} {:?}", self.span, self.node)
+        write!(f, "{{{:?}}} ", self.span)?;
+        Debug::fmt(&self.node, f)
     }
 }
 
