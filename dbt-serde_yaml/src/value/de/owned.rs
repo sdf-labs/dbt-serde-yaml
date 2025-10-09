@@ -650,7 +650,6 @@ impl<'de, 'u, 'f> Deserializer<'de> for ValueDeserializer<'_, 'u, 'f> {
         maybe_expecting_should_be!(self, deserialize_option, visitor);
 
         let span = self.value.span();
-        self.value.broadcast_end_mark();
         match self.value {
             Value::Null(..) => visitor.visit_unit(),
             _ => visitor.visit_some(ValueDeserializer {
