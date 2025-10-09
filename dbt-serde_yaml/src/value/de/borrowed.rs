@@ -658,7 +658,6 @@ impl<'de, 'u, 'f> Deserializer<'de> for ValueRefDeserializer<'de, '_, 'u, 'f> {
         maybe_transform_and_forward_to_value_deserializer!(self, deserialize_option, visitor);
 
         let span = self.value.span();
-        self.value.broadcast_end_mark();
         maybe_why_not!(
             self.value,
             match self.value {

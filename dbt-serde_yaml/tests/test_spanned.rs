@@ -141,10 +141,12 @@ fn test_spanned_ser() {
 
 #[test]
 fn test_spanned_de_from_value() {
+    #![allow(dead_code)]
+
     #[derive(Deserialize, Debug, PartialEq, Eq)]
     struct Thing;
 
-    #[derive(UntaggedEnumDeserialize)]
+    #[derive(UntaggedEnumDeserialize, Debug)]
     #[serde(untagged)]
     enum Inner {
         S(Spanned<String>),
@@ -162,9 +164,9 @@ fn test_spanned_de_from_value() {
         }
     }
 
-    #[derive(Deserialize)]
+    #[derive(Deserialize, Debug)]
     struct Point {
-        x: Spanned<f64>,
+        x: Option<Spanned<f64>>,
         y: Spanned<dbt_serde_yaml::Value>,
         a: Spanned<Option<f64>>,
         t: Spanned<Thing>,
@@ -188,51 +190,30 @@ fn test_spanned_de_from_value() {
     let value: dbt_serde_yaml::Value = dbt_serde_yaml::from_str(yaml).unwrap();
     let point: Spanned<Point> = dbt_serde_yaml::from_value(value).unwrap();
 
-    assert!(point.has_valid_span());
-    assert_eq!(point.span().start.line, 1);
-    assert_eq!(point.span().start.column, 1);
-    assert_eq!(point.span().end.line, 11);
-    assert_eq!(point.span().end.column, 1);
+    let expected = r#"{1:1[0]..11:1[65]} Point {
+    x: Some(
+        {1:4[3]..2:1[7]} 1.0,
+    ),
+    y: {2:4[10]..3:1[14]} Number(2.0) @{2:4[10]..3:1[14]},
+    a: {11:1[65]..11:1[65]} None,
+    t: {4:4[24]..5:1[29]} Thing,
+    v: {6:3[34]..8:1[48]} [
+        {6:5[36]..7:5[44]} "aaa",
+        {7:5[44]..8:1[48]} "bbb",
+    ],
+    w: {9:3[53]..11:1[65]} [
+        S(
+            {9:5[55]..10:5[63]} "ccc",
+        ),
+        I(
+            {10:5[63]..11:1[65]} 1,
+        ),
+    ],
+}"#;
 
-    assert_eq!(*point.x, 1.0);
-    assert!(point.a.is_none());
-    assert_eq!(*point.t, Thing {});
-    assert!(point.x.has_valid_span());
-    assert!(point.y.has_valid_span());
-    assert_eq!(point.x.span().start.index, 3);
-    assert_eq!(*point.y, 2.0);
-    assert_eq!(point.y.span().start.line, 2);
-    assert_eq!(point.y.span().start.column, 4);
-    assert_eq!(point.y.span().end.line, 3);
-    assert_eq!(point.y.span().end.column, 1);
-    assert_eq!(
-        yaml[point.x.span().start.index..point.x.span().end.index].trim(),
-        "1.0"
-    );
-    assert_eq!(
-        yaml[point.y.span().start.index..point.y.span().end.index].trim(),
-        "2.0"
-    );
-
-    assert_eq!(point.v.span().end.line, 8);
-    assert_eq!(point.v.span().end.column, 1);
-    assert_eq!(point.v[0].span().start.line, 6);
-    assert_eq!(point.v[0].span().start.column, 5);
-    assert_eq!(point.v[0].span().end.line, 7);
-    assert_eq!(point.v[0].span().end.column, 5);
-    assert_eq!(point.v[1].span().start.line, 7);
-    assert_eq!(point.v[1].span().start.column, 5);
-    assert_eq!(point.v[1].span().end.line, 8);
-    assert_eq!(point.v[1].span().end.column, 1);
-
-    assert_eq!(point.w[0].span().start.line, 9);
-    assert_eq!(point.w[0].span().start.column, 5);
-    assert_eq!(point.w[0].span().end.line, 10);
-    assert_eq!(point.w[0].span().end.column, 5);
-    assert_eq!(point.w[1].span().start.line, 10);
-    assert_eq!(point.w[1].span().start.column, 5);
-    assert_eq!(point.w[1].span().end.line, 11);
-    assert_eq!(point.w[1].span().end.column, 1);
+    let point_repr = format!("{:#?}", point);
+    eprintln!("{point_repr}");
+    assert_eq!(point_repr, expected);
 }
 
 #[test]
