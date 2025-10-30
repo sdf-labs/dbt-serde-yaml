@@ -465,11 +465,19 @@ where
     let val = &mut state.value;
     match val {
         Value::Mapping(map, ..) => {
-            let Some(tag) = map.remove(tag_key) else {
+            let Some(mut tag) = map.remove(tag_key) else {
                 return Err(D::Error::custom(format!(
                     "Expected tag key {tag_key:?} not found"
                 )));
             };
+            if let Some(transformer) = &mut state.field_transformer {
+                if let Some(transformed) = transformer(&tag)
+                    .map_err(|e| D::Error::custom(format!("Failed to transform tag: {e}")))?
+                {
+                    tag = transformed;
+                }
+            }
+
             Ok((tag, state))
         }
         _ => Err(D::Error::custom("Expected a mapping")),

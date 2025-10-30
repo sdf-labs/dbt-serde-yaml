@@ -109,7 +109,7 @@ impl<'a> Variant<'a> {
                 Ok(quote! {
                     __serde::Deserializer::deserialize_any(
                         __deserializer,
-                        __serde::__private::de::InternallyTaggedUnitVisitor::new(
+                        __serde_yaml::__private::InternallyTaggedUnitVisitor::new(
                             #enum_name,
                             #variant_name
                         )

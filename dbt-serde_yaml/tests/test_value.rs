@@ -1030,7 +1030,7 @@ fn test_tagged_enum() {
     }
 
     #[allow(clippy::large_enum_variant)]
-    #[derive(Deserialize, PartialEq, Eq, Debug)]
+    #[derive(UntaggedEnumDeserialize, PartialEq, Eq, Debug)]
     #[serde(tag = "type")]
     #[serde(rename_all = "snake_case")]
     enum Tagged {
@@ -1061,6 +1061,20 @@ fn test_tagged_enum() {
             c: false
         })
     );
+
+    let yaml = indoc! {"
+        type: t
+    "};
+    let value = dbt_serde_yaml::from_str::<Value>(yaml).unwrap();
+    let tagged = deserialize_value::<Tagged>(value, |v| {
+        if v.as_str() == Some("t") {
+            Ok(Some(Value::string("unit".to_string())))
+        } else {
+            Ok(None)
+        }
+    })
+    .0;
+    assert_eq!(tagged, Tagged::Unit);
 }
 
 #[cfg(feature = "flatten_dunder")]
