@@ -182,10 +182,8 @@ where
     where
         S: Serializer,
     {
-        set_marker(self.span.start);
-        let res = T::serialize(&self.node, serializer);
-        set_marker(self.span.end);
-        res
+        set_span(self.span.clone());
+        T::serialize(&self.node, serializer)
     }
 }
 
@@ -284,6 +282,14 @@ pub(crate) fn get_marker() -> Option<Marker> {
     MARKER.with(|m| *m.borrow())
 }
 
+pub(crate) fn set_span(span: Span) {
+    SPAN.with(|s| *s.borrow_mut() = Some(span));
+}
+
+pub(crate) fn take_span() -> Option<Span> {
+    SPAN.with(|s| s.borrow_mut().take())
+}
+
 #[cfg(feature = "filename")]
 /// Set the current source filename.
 pub(crate) fn set_filename(filename: std::sync::Arc<std::path::PathBuf>) {
@@ -296,6 +302,7 @@ pub(crate) fn get_filename() -> Option<std::sync::Arc<std::path::PathBuf>> {
     FILENAME.with(|f| f.borrow().clone())
 }
 
+// Internal states for deserialization.
 thread_local! {
     static MARKER: std::cell::RefCell<Option<Marker>> = const {
         std::cell::RefCell::new(None)
@@ -303,6 +310,13 @@ thread_local! {
 
     #[cfg(feature = "filename")]
     static FILENAME: std::cell::RefCell<Option<std::sync::Arc<std::path::PathBuf>>> = const {
+        std::cell::RefCell::new(None)
+    };
+}
+
+// Internal states for serialization.
+thread_local! {
+    static SPAN: std::cell::RefCell<Option<Span>> = const {
         std::cell::RefCell::new(None)
     };
 }

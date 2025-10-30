@@ -1,4 +1,5 @@
 use crate::error::{self, Error, ErrorImpl};
+use crate::spanned;
 use crate::value::tagged::{self, MaybeTag};
 use crate::value::{to_value, Mapping, Number, Sequence, Tag, TaggedValue, Value};
 use crate::Span;
@@ -13,6 +14,7 @@ impl Serialize for Value {
     where
         S: serde::Serializer,
     {
+        spanned::set_span(self.span().clone());
         match self {
             Value::Null(..) => serializer.serialize_unit(),
             Value::Bool(b, ..) => serializer.serialize_bool(*b),
@@ -67,23 +69,28 @@ impl ser::Serializer for Serializer {
     type SerializeStructVariant = SerializeStructVariant;
 
     fn serialize_bool(self, v: bool) -> Result<Value> {
-        Ok(Value::bool(v))
+        let span = spanned::take_span().unwrap_or_default();
+        Ok(Value::Bool(v, span))
     }
 
     fn serialize_i8(self, v: i8) -> Result<Value> {
-        Ok(Value::number(Number::from(v)))
+        let span = spanned::take_span().unwrap_or_default();
+        Ok(Value::Number(Number::from(v), span))
     }
 
     fn serialize_i16(self, v: i16) -> Result<Value> {
-        Ok(Value::number(Number::from(v)))
+        let span = spanned::take_span().unwrap_or_default();
+        Ok(Value::Number(Number::from(v), span))
     }
 
     fn serialize_i32(self, v: i32) -> Result<Value> {
-        Ok(Value::number(Number::from(v)))
+        let span = spanned::take_span().unwrap_or_default();
+        Ok(Value::Number(Number::from(v), span))
     }
 
     fn serialize_i64(self, v: i64) -> Result<Value> {
-        Ok(Value::number(Number::from(v)))
+        let span = spanned::take_span().unwrap_or_default();
+        Ok(Value::Number(Number::from(v), span))
     }
 
     fn serialize_i128(self, v: i128) -> Result<Value> {
@@ -92,60 +99,72 @@ impl ser::Serializer for Serializer {
         } else if let Ok(v) = i64::try_from(v) {
             self.serialize_i64(v)
         } else {
-            Ok(Value::string(v.to_string()))
+            let span = spanned::take_span().unwrap_or_default();
+            Ok(Value::String(v.to_string(), span))
         }
     }
 
     fn serialize_u8(self, v: u8) -> Result<Value> {
-        Ok(Value::number(Number::from(v)))
+        let span = spanned::take_span().unwrap_or_default();
+        Ok(Value::Number(Number::from(v), span))
     }
 
     fn serialize_u16(self, v: u16) -> Result<Value> {
-        Ok(Value::number(Number::from(v)))
+        let span = spanned::take_span().unwrap_or_default();
+        Ok(Value::Number(Number::from(v), span))
     }
 
     fn serialize_u32(self, v: u32) -> Result<Value> {
-        Ok(Value::number(Number::from(v)))
+        let span = spanned::take_span().unwrap_or_default();
+        Ok(Value::Number(Number::from(v), span))
     }
 
     fn serialize_u64(self, v: u64) -> Result<Value> {
-        Ok(Value::number(Number::from(v)))
+        let span = spanned::take_span().unwrap_or_default();
+        Ok(Value::Number(Number::from(v), span))
     }
 
     fn serialize_u128(self, v: u128) -> Result<Value> {
         if let Ok(v) = u64::try_from(v) {
             self.serialize_u64(v)
         } else {
-            Ok(Value::string(v.to_string()))
+            let span = spanned::take_span().unwrap_or_default();
+            Ok(Value::String(v.to_string(), span))
         }
     }
 
     fn serialize_f32(self, v: f32) -> Result<Value> {
-        Ok(Value::number(Number::from(v)))
+        let span = spanned::take_span().unwrap_or_default();
+        Ok(Value::Number(Number::from(v), span))
     }
 
     fn serialize_f64(self, v: f64) -> Result<Value> {
-        Ok(Value::number(Number::from(v)))
+        let span = spanned::take_span().unwrap_or_default();
+        Ok(Value::Number(Number::from(v), span))
     }
 
     fn serialize_char(self, value: char) -> Result<Value> {
-        Ok(Value::string(value.to_string()))
+        let span = spanned::take_span().unwrap_or_default();
+        Ok(Value::String(value.to_string(), span))
     }
 
     fn serialize_str(self, value: &str) -> Result<Value> {
-        Ok(Value::string(value.to_owned()))
+        let span = spanned::take_span().unwrap_or_default();
+        Ok(Value::String(value.to_owned(), span))
     }
 
     fn serialize_bytes(self, value: &[u8]) -> Result<Value> {
+        let span = spanned::take_span().unwrap_or_default();
         let vec = value
             .iter()
             .map(|&b| Value::number(Number::from(b)))
             .collect();
-        Ok(Value::sequence(vec))
+        Ok(Value::Sequence(vec, span))
     }
 
     fn serialize_unit(self) -> Result<Value> {
-        Ok(Value::Null(Span::default()))
+        let span = spanned::take_span().unwrap_or_default();
+        Ok(Value::Null(span))
     }
 
     fn serialize_unit_struct(self, _name: &'static str) -> Result<Value> {
@@ -158,7 +177,8 @@ impl ser::Serializer for Serializer {
         _variant_index: u32,
         variant: &str,
     ) -> Result<Value> {
-        Ok(Value::string(variant.to_owned()))
+        let span = spanned::take_span().unwrap_or_default();
+        Ok(Value::String(variant.to_owned(), span))
     }
 
     fn serialize_newtype_struct<T>(self, _name: &'static str, value: &T) -> Result<Value>
@@ -178,13 +198,17 @@ impl ser::Serializer for Serializer {
     where
         T: ?Sized + ser::Serialize,
     {
+        let span = spanned::take_span().unwrap_or_default();
         if variant.is_empty() {
             return Err(error::new(ErrorImpl::EmptyTag));
         }
-        Ok(Value::tagged(Box::new(TaggedValue {
-            tag: Tag::new(variant),
-            value: to_value(value)?,
-        })))
+        Ok(Value::Tagged(
+            Box::new(TaggedValue {
+                tag: Tag::new(variant),
+                value: to_value(value)?,
+            }),
+            span,
+        ))
     }
 
     fn serialize_none(self) -> Result<Value> {
@@ -199,11 +223,12 @@ impl ser::Serializer for Serializer {
     }
 
     fn serialize_seq(self, len: Option<usize>) -> Result<SerializeArray> {
+        let span = spanned::take_span().unwrap_or_default();
         let sequence = match len {
             None => Sequence::new(),
             Some(len) => Sequence::with_capacity(len),
         };
-        Ok(SerializeArray { sequence })
+        Ok(SerializeArray { sequence, span })
     }
 
     fn serialize_tuple(self, len: usize) -> Result<SerializeArray> {
@@ -221,22 +246,26 @@ impl ser::Serializer for Serializer {
         variant: &'static str,
         len: usize,
     ) -> Result<SerializeTupleVariant> {
+        let span = spanned::take_span().unwrap_or_default();
         if variant.is_empty() {
             return Err(error::new(ErrorImpl::EmptyTag));
         }
         Ok(SerializeTupleVariant {
             tag: variant,
             sequence: Sequence::with_capacity(len),
+            span,
         })
     }
 
     fn serialize_map(self, len: Option<usize>) -> Result<SerializeMap> {
+        let span = spanned::take_span().unwrap_or_default();
         if len == Some(1) {
-            Ok(SerializeMap::CheckForTag)
+            Ok(SerializeMap::CheckForTag(span))
         } else {
             Ok(SerializeMap::Untagged {
                 mapping: Mapping::new(),
                 next_key: None,
+                span,
             })
         }
     }
@@ -244,6 +273,7 @@ impl ser::Serializer for Serializer {
     fn serialize_struct(self, _name: &'static str, _len: usize) -> Result<SerializeStruct> {
         Ok(SerializeStruct {
             mapping: Mapping::new(),
+            span: spanned::take_span().unwrap_or_default(),
         })
     }
 
@@ -266,6 +296,7 @@ impl ser::Serializer for Serializer {
 
 pub struct SerializeArray {
     sequence: Sequence,
+    span: Span,
 }
 
 impl ser::SerializeSeq for SerializeArray {
@@ -281,7 +312,7 @@ impl ser::SerializeSeq for SerializeArray {
     }
 
     fn end(self) -> Result<Value> {
-        Ok(Value::sequence(self.sequence))
+        Ok(Value::Sequence(self.sequence, self.span))
     }
 }
 
@@ -320,6 +351,7 @@ impl ser::SerializeTupleStruct for SerializeArray {
 pub struct SerializeTupleVariant {
     tag: &'static str,
     sequence: Sequence,
+    span: Span,
 }
 
 impl ser::SerializeTupleVariant for SerializeTupleVariant {
@@ -335,19 +367,23 @@ impl ser::SerializeTupleVariant for SerializeTupleVariant {
     }
 
     fn end(self) -> Result<Value> {
-        Ok(Value::tagged(Box::new(TaggedValue {
-            tag: Tag::new(self.tag),
-            value: Value::sequence(self.sequence),
-        })))
+        Ok(Value::Tagged(
+            Box::new(TaggedValue {
+                tag: Tag::new(self.tag),
+                value: Value::sequence(self.sequence),
+            }),
+            self.span,
+        ))
     }
 }
 
 pub enum SerializeMap {
-    CheckForTag,
-    Tagged(TaggedValue),
+    CheckForTag(Span),
+    Tagged(TaggedValue, Span),
     Untagged {
         mapping: Mapping,
         next_key: Option<Value>,
+        span: Span,
     },
 }
 
@@ -361,13 +397,14 @@ impl ser::SerializeMap for SerializeMap {
     {
         let key = Some(to_value(key)?);
         match self {
-            SerializeMap::CheckForTag => {
+            SerializeMap::CheckForTag(span) => {
                 *self = SerializeMap::Untagged {
                     mapping: Mapping::new(),
                     next_key: key,
+                    span: span.clone(),
                 };
             }
-            SerializeMap::Tagged(tagged) => {
+            SerializeMap::Tagged(tagged, span) => {
                 let mut mapping = Mapping::new();
                 mapping.insert(
                     Value::string(tagged.tag.to_string()),
@@ -376,6 +413,7 @@ impl ser::SerializeMap for SerializeMap {
                 *self = SerializeMap::Untagged {
                     mapping,
                     next_key: key,
+                    span: span.clone(),
                 };
             }
             SerializeMap::Untagged { next_key, .. } => *next_key = key,
@@ -388,8 +426,10 @@ impl ser::SerializeMap for SerializeMap {
         T: ?Sized + ser::Serialize,
     {
         let (mapping, key) = match self {
-            SerializeMap::CheckForTag | SerializeMap::Tagged(_) => unreachable!(),
-            SerializeMap::Untagged { mapping, next_key } => (mapping, next_key),
+            SerializeMap::CheckForTag(_) | SerializeMap::Tagged(_, _) => unreachable!(),
+            SerializeMap::Untagged {
+                mapping, next_key, ..
+            } => (mapping, next_key),
         };
         match key.take() {
             Some(key) => mapping.insert(key, to_value(value)?),
@@ -749,24 +789,28 @@ impl ser::SerializeMap for SerializeMap {
         }
 
         match self {
-            SerializeMap::CheckForTag => {
+            SerializeMap::CheckForTag(span) => {
                 let key = key.serialize(CheckForTag)?;
                 let mut mapping = Mapping::new();
                 *self = match key {
-                    MaybeTag::Tag(string) => SerializeMap::Tagged(TaggedValue {
-                        tag: Tag::new(string),
-                        value: to_value(value)?,
-                    }),
+                    MaybeTag::Tag(string) => SerializeMap::Tagged(
+                        TaggedValue {
+                            tag: Tag::new(string),
+                            value: to_value(value)?,
+                        },
+                        span.clone(),
+                    ),
                     MaybeTag::NotTag(key) => {
                         mapping.insert(key, to_value(value)?);
                         SerializeMap::Untagged {
                             mapping,
                             next_key: None,
+                            span: span.clone(),
                         }
                     }
                 };
             }
-            SerializeMap::Tagged(tagged) => {
+            SerializeMap::Tagged(tagged, span) => {
                 let mut mapping = Mapping::new();
                 mapping.insert(
                     Value::string(tagged.tag.to_string()),
@@ -776,6 +820,7 @@ impl ser::SerializeMap for SerializeMap {
                 *self = SerializeMap::Untagged {
                     mapping,
                     next_key: None,
+                    span: span.clone(),
                 };
             }
             SerializeMap::Untagged { mapping, .. } => {
@@ -787,15 +832,16 @@ impl ser::SerializeMap for SerializeMap {
 
     fn end(self) -> Result<Value> {
         Ok(match self {
-            SerializeMap::CheckForTag => Value::mapping(Mapping::new()),
-            SerializeMap::Tagged(tagged) => Value::tagged(Box::new(tagged)),
-            SerializeMap::Untagged { mapping, .. } => Value::mapping(mapping),
+            SerializeMap::CheckForTag(span) => Value::Mapping(Mapping::new(), span),
+            SerializeMap::Tagged(tagged, span) => Value::Tagged(Box::new(tagged), span),
+            SerializeMap::Untagged { mapping, span, .. } => Value::Mapping(mapping, span),
         })
     }
 }
 
 pub struct SerializeStruct {
     mapping: Mapping,
+    span: Span,
 }
 
 impl ser::SerializeStruct for SerializeStruct {
@@ -823,7 +869,7 @@ impl ser::SerializeStruct for SerializeStruct {
     }
 
     fn end(self) -> Result<Value> {
-        Ok(Value::mapping(self.mapping))
+        Ok(Value::Mapping(self.mapping, self.span))
     }
 }
 
