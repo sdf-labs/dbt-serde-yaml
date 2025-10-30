@@ -143,10 +143,10 @@ fn test_spanned_ser() {
 fn test_spanned_de_from_value() {
     #![allow(dead_code)]
 
-    #[derive(Deserialize, Debug, PartialEq, Eq)]
+    #[derive(Deserialize, Debug, PartialEq, Eq, Serialize)]
     struct Thing;
 
-    #[derive(UntaggedEnumDeserialize, Debug)]
+    #[derive(UntaggedEnumDeserialize, Debug, Serialize)]
     #[serde(untagged)]
     enum Inner {
         S(Spanned<String>),
@@ -164,7 +164,7 @@ fn test_spanned_de_from_value() {
         }
     }
 
-    #[derive(Deserialize, Debug)]
+    #[derive(Deserialize, Debug, Serialize)]
     struct Point {
         x: Option<Spanned<f64>>,
         y: Spanned<dbt_serde_yaml::Value>,
@@ -214,6 +214,13 @@ fn test_spanned_de_from_value() {
     let point_repr = format!("{:#?}", point);
     eprintln!("{point_repr}");
     assert_eq!(point_repr, expected);
+
+    // Test roundtrip
+    let value = dbt_serde_yaml::to_value(&point).unwrap();
+    let point: Spanned<Point> = dbt_serde_yaml::from_value(value).unwrap();
+    let point_repr = format!("{:#?}", point);
+    eprintln!("{point_repr}");
+    assert_eq!(point_repr, expected);
 }
 
 #[test]
@@ -227,7 +234,7 @@ fn test_value_to_value_span() {
               key2: value2
         "};
 
-    #[derive(Deserialize, Debug)]
+    #[derive(Deserialize, Debug, Serialize)]
     struct Root {
         key: Vec<Spanned<dbt_serde_yaml::Value>>,
     }
@@ -251,6 +258,13 @@ fn test_value_to_value_span() {
     assert_eq!(root_repr, expected);
 
     let root: Spanned<Root> = value.into_typed(|_, _, _| {}, |_| Ok(None)).unwrap();
+    let root_repr = format!("{:#?}", root.key);
+    eprintln!("{root_repr}");
+    assert_eq!(root_repr, expected);
+
+    // Test roundtrip
+    let value = dbt_serde_yaml::to_value(&root).unwrap();
+    let root: Spanned<Root> = value.to_typed(|_, _, _| {}, |_| Ok(None)).unwrap();
     let root_repr = format!("{:#?}", root.key);
     eprintln!("{root_repr}");
     assert_eq!(root_repr, expected);
