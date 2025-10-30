@@ -226,5 +226,59 @@ pub(crate) fn is_flatten_key(_key: &[u8]) -> bool {
 }
 
 pub use dbt_serde_yaml_derive::UntaggedEnumDeserialize;
+
+/// Private API for internally tagged unit variant deserialization.
+pub mod __private {
+    /// Visitor for deserializing an internally tagged unit variant.
+    ///
+    /// Not public API.
+    pub struct InternallyTaggedUnitVisitor<'a> {
+        type_name: &'a str,
+        variant_name: &'a str,
+    }
+
+    impl<'a> InternallyTaggedUnitVisitor<'a> {
+        /// Not public API.
+        pub fn new(type_name: &'a str, variant_name: &'a str) -> Self {
+            InternallyTaggedUnitVisitor {
+                type_name,
+                variant_name,
+            }
+        }
+    }
+
+    impl<'de, 'a> serde::de::Visitor<'de> for InternallyTaggedUnitVisitor<'a> {
+        type Value = ();
+
+        fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+            write!(
+                formatter,
+                "unit variant {}::{}",
+                self.type_name, self.variant_name
+            )
+        }
+
+        fn visit_seq<S>(self, _: S) -> Result<(), S::Error>
+        where
+            S: serde::de::SeqAccess<'de>,
+        {
+            Ok(())
+        }
+
+        fn visit_map<M>(self, mut access: M) -> Result<(), M::Error>
+        where
+            M: serde::de::MapAccess<'de>,
+        {
+            while match access.next_entry::<serde::de::IgnoredAny, serde::de::IgnoredAny>() {
+                Ok(val) => val,
+                Err(err) => return Err(err),
+            }
+            .is_some()
+            {}
+            Ok(())
+        }
+    }
+}
+
 #[cfg(feature = "schemars")]
 pub use dbt_serde_yaml_schemars_derive::JsonSchema;
