@@ -9,6 +9,19 @@ use std::result;
 use std::string;
 use std::sync::Arc;
 
+/// A trait for errors that can provide span information while implementing the standard Error trait.
+///
+/// This trait is used by dbt-serde-yaml to extract span information from external errors
+/// (like FsError from dbt-fusion) while maintaining compatibility with the standard Error trait.
+/// 
+/// The `source()` method is inherited from `std::error::Error` to traverse the error chain.
+pub trait DbtSerdeError: std::error::Error + Send + Sync + 'static {
+    /// Returns the span information associated with this error, if available.
+    fn span(&self) -> Option<Span> {
+        None
+    }
+}
+
 /// An error that happened serializing or deserializing YAML data.
 pub struct Error(Box<ErrorImpl>);
 
@@ -39,6 +52,9 @@ pub(crate) enum ErrorImpl {
     FlattenNotMapping,
 
     External(Box<dyn StdError + 'static + Send + Sync>),
+
+    /// External error that implements DbtSerdeError and can provide span information
+    ExternalWithSpan(Box<dyn DbtSerdeError + 'static>),
 
     Shared(Arc<ErrorImpl>),
 }
@@ -174,6 +190,12 @@ impl From<Box<dyn StdError + 'static + Send + Sync>> for Error {
     }
 }
 
+impl From<Box<dyn DbtSerdeError + 'static>> for Error {
+    fn from(err: Box<dyn DbtSerdeError + 'static>) -> Self {
+        Error(Box::new(ErrorImpl::ExternalWithSpan(err)))
+    }
+}
+
 impl StdError for Error {
     fn source(&self) -> Option<&(dyn StdError + 'static)> {
         self.0.source()
@@ -217,6 +239,7 @@ impl ErrorImpl {
             ErrorImpl::FromUtf8(err) => err.source(),
             ErrorImpl::Shared(err) => err.source(),
             ErrorImpl::External(err) => err.source(),
+            ErrorImpl::ExternalWithSpan(err) => err.source(),
             _ => None,
         }
     }
@@ -229,6 +252,7 @@ impl ErrorImpl {
             }
             ErrorImpl::Libyaml(err) => Some(Marker::from(err.mark()).into()),
             ErrorImpl::Shared(err) => err.span(),
+            ErrorImpl::ExternalWithSpan(err) => err.span(),
             _ => None,
         }
     }
@@ -271,6 +295,7 @@ impl ErrorImpl {
             ErrorImpl::EmptyTag => f.write_str("empty YAML tag is not allowed"),
             ErrorImpl::FailedToParseNumber => f.write_str("failed to parse YAML number"),
             ErrorImpl::External(err) => Display::fmt(err.as_ref(), f),
+            ErrorImpl::ExternalWithSpan(err) => Display::fmt(err.as_ref(), f),
             ErrorImpl::Shared(_) => unreachable!(),
             ErrorImpl::FlattenNotMapping => write!(f, "expected the flatten field to be a mapping"),
         }

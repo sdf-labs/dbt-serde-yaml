@@ -10,7 +10,7 @@ use serde::{
     Deserialize, Deserializer, Serialize,
 };
 
-use crate::{Error, Value};
+use crate::{Error, Span, Value};
 
 /// Represents a value that should be of type `T`, or provides information about
 /// why it is not.
@@ -101,7 +101,7 @@ impl<T> ShouldBe<T> {
             ShouldBe::AndIs(_) => None,
             ShouldBe::ButIsnt { raw: _, why_not } => match why_not {
                 WhyNot::Original(err) => Some(err),
-                WhyNot::Custom(_) => None,
+                WhyNot::Custom(_, _) => None,
             },
         }
     }
@@ -164,15 +164,20 @@ pub enum WhyNot {
     /// The original error that occurred during deserialization.
     Original(Error),
 
-    /// A custom message explaining why the value does not match the expected type or value.
-    Custom(String),
+    /// A custom message explaining why the value does not match the expected type or value,
+    /// optionally with span information for better error reporting.
+    Custom(String, Option<Span>),
 }
 
 impl Clone for WhyNot {
     fn clone(&self) -> Self {
         match self {
-            WhyNot::Original(err) => WhyNot::Custom(err.to_string()),
-            WhyNot::Custom(msg) => WhyNot::Custom(msg.clone()),
+            WhyNot::Original(err) => {
+                // Extract span information from the error to preserve location data
+                let span = err.span();
+                WhyNot::Custom(err.to_string(), span)
+            }
+            WhyNot::Custom(msg, span) => WhyNot::Custom(msg.clone(), span.clone()),
         }
     }
 }
@@ -181,7 +186,15 @@ impl From<WhyNot> for Error {
     fn from(why_not: WhyNot) -> Self {
         match why_not {
             WhyNot::Original(err) => err,
-            WhyNot::Custom(msg) => Error::custom(msg),
+            WhyNot::Custom(msg, span) => {
+                let err = Error::custom(msg);
+                // If span information is available, attach it to the error
+                if let Some(s) = span {
+                    crate::error::set_span(err, s)
+                } else {
+                    err
+                }
+            }
         }
     }
 }
@@ -190,7 +203,7 @@ impl Debug for WhyNot {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             WhyNot::Original(err) => write!(f, "WhyNot::Original({})", err),
-            WhyNot::Custom(msg) => write!(f, "WhyNot::Custom({})", msg),
+            WhyNot::Custom(msg, span) => write!(f, "WhyNot::Custom({}, {:?})", msg, span),
         }
     }
 }
