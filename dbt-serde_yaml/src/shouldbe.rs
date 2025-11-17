@@ -233,7 +233,9 @@ impl<T> ShouldBe<T> {
 
     /// Extracts the contained [Error] instance, if any.
     ///
-    /// Panics if the value is valid (i.e., it is of type `T`).
+    /// This method transfers ownership of the [Error] out of the [ShouldBe]
+    /// instance to the caller. See the [ShouldBe] documentation for more
+    /// details.
     pub fn take_err(&self) -> Option<Error> {
         match self {
             ShouldBe::AndIs(_) => None,
@@ -293,6 +295,7 @@ where
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
             (ShouldBe::AndIs(a), ShouldBe::AndIs(b)) => a == b,
+            (ShouldBe::ButIsnt(a), ShouldBe::ButIsnt(b)) => a == b,
             _ => false,
         }
     }
@@ -307,7 +310,9 @@ where
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
         match (self, other) {
             (ShouldBe::AndIs(a), ShouldBe::AndIs(b)) => a.partial_cmp(b),
-            _ => None,
+            (ShouldBe::ButIsnt(a), ShouldBe::ButIsnt(b)) => a.partial_cmp(b),
+            (ShouldBe::AndIs(_), ShouldBe::ButIsnt(_)) => Some(std::cmp::Ordering::Greater),
+            (ShouldBe::ButIsnt(_), ShouldBe::AndIs(_)) => Some(std::cmp::Ordering::Less),
         }
     }
 }
@@ -319,7 +324,9 @@ where
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
         match (self, other) {
             (ShouldBe::AndIs(a), ShouldBe::AndIs(b)) => a.cmp(b),
-            _ => std::cmp::Ordering::Equal,
+            (ShouldBe::ButIsnt(a), ShouldBe::ButIsnt(b)) => a.cmp(b),
+            (ShouldBe::AndIs(_), ShouldBe::ButIsnt(_)) => std::cmp::Ordering::Greater,
+            (ShouldBe::ButIsnt(_), ShouldBe::AndIs(_)) => std::cmp::Ordering::Less,
         }
     }
 }
@@ -331,7 +338,7 @@ where
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         match self {
             ShouldBe::AndIs(value) => value.hash(state),
-            ShouldBe::ButIsnt(why_not) => why_not.as_ref_raw().hash(state),
+            ShouldBe::ButIsnt(why_not) => why_not.hash(state),
         }
     }
 }
@@ -387,7 +394,10 @@ where
     }
 }
 
-/// Represents the reason why a value does not match the expected type or value.
+/// An opaque type that captures the reason why a deserialization to a
+/// [ShouldBe<T>] failed.
+///
+/// This type is only meant to be used within the [ShouldBe] type.
 #[derive(Clone)]
 pub struct WhyNot(Arc<WhyNotImpl>);
 
@@ -443,6 +453,44 @@ impl WhyNot {
         &self.0.err_msg
     }
 }
+
+// ----- Value semantics for WhyNot -----
+//
+// `WhyNot` instances are treated as the pair `(raw_value: Option<Value>,
+// err_msg: String)` for the purposes of equality, ordering, and hashing.
+// The `Error` instance is ignored.
+
+impl PartialEq for WhyNot {
+    fn eq(&self, other: &Self) -> bool {
+        self.as_ref_raw() == other.as_ref_raw() && self.as_msg() == other.as_msg()
+    }
+}
+
+impl Eq for WhyNot {}
+
+impl PartialOrd for WhyNot {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for WhyNot {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        match self.as_ref_raw().partial_cmp(&other.as_ref_raw()) {
+            Some(std::cmp::Ordering::Equal) | None => self.as_msg().cmp(other.as_msg()),
+            Some(ord) => ord,
+        }
+    }
+}
+
+impl std::hash::Hash for WhyNot {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.as_ref_raw().hash(state);
+        self.as_msg().hash(state);
+    }
+}
+
+// --------------------------------------
 
 impl From<WhyNot> for Error {
     fn from(why_not: WhyNot) -> Self {
