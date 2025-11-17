@@ -417,7 +417,7 @@ impl<'de, 'u, 'f> Deserializer<'de> for ValueRefDeserializer<'de, '_, 'u, 'f> {
     where
         V: Visitor<'de>,
     {
-        let span = self.value.span();
+        let span = self.value.span().clone();
         self.value.broadcast_end_mark();
         if super::should_short_circuit_any(self.field_transformer.is_some()) {
             // SAFETY: self.unused_key_callback and self.field_transformer are
@@ -467,7 +467,7 @@ impl<'de, 'u, 'f> Deserializer<'de> for ValueRefDeserializer<'de, '_, 'u, 'f> {
     {
         maybe_transform_and_forward_to_value_deserializer!(self, deserialize_bool, visitor);
 
-        let span = self.value.span();
+        let span = self.value.span().clone();
         self.value.broadcast_end_mark();
         maybe_why_not!(
             self.value,
@@ -600,7 +600,7 @@ impl<'de, 'u, 'f> Deserializer<'de> for ValueRefDeserializer<'de, '_, 'u, 'f> {
     {
         maybe_transform_and_forward_to_value_deserializer!(self, deserialize_str, visitor);
 
-        let span = self.value.span();
+        let span = self.value.span().clone();
         self.value.broadcast_end_mark();
         maybe_why_not!(
             self.value,
@@ -625,7 +625,7 @@ impl<'de, 'u, 'f> Deserializer<'de> for ValueRefDeserializer<'de, '_, 'u, 'f> {
     {
         maybe_transform_and_forward_to_value_deserializer!(self, deserialize_bytes, visitor);
 
-        let span = self.value.span();
+        let span = self.value.span().clone();
         self.value.broadcast_end_mark();
         maybe_why_not!(
             self.value,
@@ -657,7 +657,7 @@ impl<'de, 'u, 'f> Deserializer<'de> for ValueRefDeserializer<'de, '_, 'u, 'f> {
     {
         maybe_transform_and_forward_to_value_deserializer!(self, deserialize_option, visitor);
 
-        let span = self.value.span();
+        let span = self.value.span().clone();
         maybe_why_not!(
             self.value,
             match self.value {
@@ -679,7 +679,7 @@ impl<'de, 'u, 'f> Deserializer<'de> for ValueRefDeserializer<'de, '_, 'u, 'f> {
     {
         maybe_transform_and_forward_to_value_deserializer!(self, deserialize_unit, visitor);
 
-        let span = self.value.span();
+        let span = self.value.span().clone();
         self.value.broadcast_end_mark();
         maybe_why_not!(
             self.value,
@@ -724,7 +724,7 @@ impl<'de, 'u, 'f> Deserializer<'de> for ValueRefDeserializer<'de, '_, 'u, 'f> {
             visitor
         );
 
-        let span = self.value.span();
+        let span = self.value.span().clone();
         self.value.broadcast_end_mark();
         maybe_why_not!(
             self.value,
@@ -747,7 +747,7 @@ impl<'de, 'u, 'f> Deserializer<'de> for ValueRefDeserializer<'de, '_, 'u, 'f> {
 
         maybe_transform_and_forward_to_value_deserializer!(self, deserialize_seq, visitor);
 
-        let span = self.value.span();
+        let span = self.value.span().clone();
         self.value.broadcast_end_mark();
         maybe_why_not!(
             self.value,
@@ -797,7 +797,7 @@ impl<'de, 'u, 'f> Deserializer<'de> for ValueRefDeserializer<'de, '_, 'u, 'f> {
     {
         maybe_transform_and_forward_to_value_deserializer!(self, deserialize_map, visitor);
 
-        let span = self.value.span();
+        let span = self.value.span().clone();
         self.value.broadcast_end_mark();
         maybe_why_not!(
             self.value,
@@ -833,7 +833,7 @@ impl<'de, 'u, 'f> Deserializer<'de> for ValueRefDeserializer<'de, '_, 'u, 'f> {
             visitor
         );
 
-        let span = self.value.span();
+        let span = self.value.span().clone();
         self.value.broadcast_end_mark();
         maybe_why_not!(
             self.value,
@@ -870,7 +870,7 @@ impl<'de, 'u, 'f> Deserializer<'de> for ValueRefDeserializer<'de, '_, 'u, 'f> {
             visitor
         );
 
-        let span = self.value.span();
+        let span = self.value.span().clone();
         self.value.broadcast_end_mark();
         maybe_why_not!(
             self.value,
@@ -912,7 +912,7 @@ impl<'de, 'u, 'f> Deserializer<'de> for ValueRefDeserializer<'de, '_, 'u, 'f> {
     where
         V: Visitor<'de>,
     {
-        let span = self.value.span();
+        let span = self.value.span().clone();
         self.value.broadcast_end_mark();
         maybe_why_not!(
             self.value,
@@ -1183,7 +1183,7 @@ impl<'de> SeqAccess<'de> for SeqRefDeserializer<'de, '_, '_, '_> {
         self.current_idx += 1;
         match self.iter.next() {
             Some(value) => {
-                let span = value.span();
+                let span = value.span().clone();
                 let deserializer = ValueRefDeserializer::new_with(
                     value,
                     Path::Seq {

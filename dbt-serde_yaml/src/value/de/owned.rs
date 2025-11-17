@@ -428,7 +428,7 @@ impl<'de, 'u, 'f> Deserializer<'de> for ValueDeserializer<'_, 'u, 'f> {
     where
         V: Visitor<'de>,
     {
-        let span = self.value.span();
+        let span = self.value.span().clone();
         self.value.broadcast_end_mark();
         if super::should_short_circuit_any(self.field_transformer.is_some()) {
             // SAFETY: self.unused_key_callback and self.field_transformer are
@@ -477,7 +477,7 @@ impl<'de, 'u, 'f> Deserializer<'de> for ValueDeserializer<'_, 'u, 'f> {
         self.maybe_apply_transformation()?;
         maybe_expecting_should_be!(self, deserialize_bool, visitor);
 
-        let span = self.value.span();
+        let span = self.value.span().clone();
         self.value.broadcast_end_mark();
         match self.value.untag() {
             Value::Bool(v, ..) => visitor.visit_bool(v),
@@ -603,7 +603,7 @@ impl<'de, 'u, 'f> Deserializer<'de> for ValueDeserializer<'_, 'u, 'f> {
         self.maybe_apply_transformation()?;
         maybe_expecting_should_be!(self, deserialize_string, visitor);
 
-        let span = self.value.span();
+        let span = self.value.span().clone();
         self.value.broadcast_end_mark();
         match self.value.untag() {
             Value::String(v, ..) => visitor.visit_string(v),
@@ -626,7 +626,7 @@ impl<'de, 'u, 'f> Deserializer<'de> for ValueDeserializer<'_, 'u, 'f> {
         self.maybe_apply_transformation()?;
         maybe_expecting_should_be!(self, deserialize_byte_buf, visitor);
 
-        let span = self.value.span();
+        let span = self.value.span().clone();
         self.value.broadcast_end_mark();
         match self.value.untag() {
             Value::String(v, ..) => visitor.visit_string(v),
@@ -649,7 +649,7 @@ impl<'de, 'u, 'f> Deserializer<'de> for ValueDeserializer<'_, 'u, 'f> {
         self.maybe_apply_transformation()?;
         maybe_expecting_should_be!(self, deserialize_option, visitor);
 
-        let span = self.value.span();
+        let span = self.value.span().clone();
         match self.value {
             Value::Null(..) => visitor.visit_unit(),
             _ => visitor.visit_some(ValueDeserializer {
@@ -670,7 +670,7 @@ impl<'de, 'u, 'f> Deserializer<'de> for ValueDeserializer<'_, 'u, 'f> {
         self.maybe_apply_transformation()?;
         maybe_expecting_should_be!(self, deserialize_unit, visitor);
 
-        let span = self.value.span();
+        let span = self.value.span().clone();
         self.value.broadcast_end_mark();
         match self.value {
             Value::Null(..) => visitor.visit_unit(),
@@ -697,7 +697,7 @@ impl<'de, 'u, 'f> Deserializer<'de> for ValueDeserializer<'_, 'u, 'f> {
         self.maybe_apply_transformation()?;
         maybe_expecting_should_be!(self, deserialize_newtype_struct, name, visitor);
 
-        let span = self.value.span();
+        let span = self.value.span().clone();
         self.value.broadcast_end_mark();
         visitor
             .visit_newtype_struct(self)
@@ -711,7 +711,7 @@ impl<'de, 'u, 'f> Deserializer<'de> for ValueDeserializer<'_, 'u, 'f> {
         self.maybe_apply_transformation()?;
         maybe_expecting_should_be!(self, deserialize_seq, visitor);
 
-        let span = self.value.span();
+        let span = self.value.span().clone();
         self.value.broadcast_end_mark();
         match self.value.untag() {
             Value::Sequence(v, ..) => visit_sequence(
@@ -759,7 +759,7 @@ impl<'de, 'u, 'f> Deserializer<'de> for ValueDeserializer<'_, 'u, 'f> {
         self.maybe_apply_transformation()?;
         maybe_expecting_should_be!(self, deserialize_map, visitor);
 
-        let span = self.value.span();
+        let span = self.value.span().clone();
         self.value.broadcast_end_mark();
         match self.value.untag() {
             Value::Mapping(v, ..) => visit_mapping(
@@ -793,7 +793,7 @@ impl<'de, 'u, 'f> Deserializer<'de> for ValueDeserializer<'_, 'u, 'f> {
         self.maybe_apply_transformation()?;
         maybe_expecting_should_be!(self, deserialize_struct, name, fields, visitor);
 
-        let span = self.value.span();
+        let span = self.value.span().clone();
         self.value.broadcast_end_mark();
         match self.value.untag() {
             Value::Mapping(v, ..) => visit_struct(
@@ -829,7 +829,7 @@ impl<'de, 'u, 'f> Deserializer<'de> for ValueDeserializer<'_, 'u, 'f> {
         self.maybe_apply_transformation()?;
         maybe_expecting_should_be!(self, deserialize_enum, name, variants, visitor);
 
-        let span = self.value.span();
+        let span = self.value.span().clone();
         self.value.broadcast_end_mark();
 
         let tag;
@@ -878,7 +878,7 @@ impl<'de, 'u, 'f> Deserializer<'de> for ValueDeserializer<'_, 'u, 'f> {
     {
         maybe_expecting_should_be!(self, deserialize_ignored_any, visitor);
 
-        let span = self.value.span();
+        let span = self.value.span().clone();
         self.value.broadcast_end_mark();
         drop(self);
         visitor.visit_unit().map_err(|e| error::set_span(e, span))
@@ -1135,7 +1135,7 @@ impl<'de, 'u, 'f> SeqAccess<'de> for SeqDeserializer<'_, 'u, 'f> {
         self.current_idx += 1;
         match self.iter.next() {
             Some(value) => {
-                let span = value.span();
+                let span = value.span().clone();
                 let unused_key_callback = self
                     .unused_key_callback
                     .as_deref_mut()
