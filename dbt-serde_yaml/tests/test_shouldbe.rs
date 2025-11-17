@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use dbt_serde_yaml::{Error, Number, ShouldBe, Value, WhyNot};
 use serde::de::Error as _;
 use serde_derive::Deserialize;
@@ -5,10 +7,10 @@ use serde_derive::Deserialize;
 #[test]
 fn test_shouldbe() {
     let valid: ShouldBe<i32> = ShouldBe::AndIs(42);
-    let invalid: ShouldBe<i32> = ShouldBe::ButIsnt {
-        raw: Some(Value::number(Number::from(0))),
-        why_not: WhyNot::Original(Error::custom("Expected a number")),
-    };
+    let invalid: ShouldBe<i32> = ShouldBe::ButIsnt(WhyNot::new(
+        Some(Value::number(Number::from(0))),
+        Error::custom("Expected a number"),
+    ));
 
     assert!(valid.is());
     assert!(invalid.isnt());
@@ -16,10 +18,7 @@ fn test_shouldbe() {
     assert_eq!(valid.as_ref(), Some(&42));
     assert_eq!(invalid.as_ref(), None);
     assert_eq!(invalid.as_ref_raw(), Some(&Value::number(Number::from(0))));
-    assert_eq!(
-        invalid.as_ref_err().unwrap().to_string(),
-        "Expected a number"
-    );
+    assert_eq!(invalid.as_err_msg().unwrap(), "Expected a number");
 }
 
 #[test]
@@ -40,7 +39,7 @@ fn test_deserialize_str() {
     assert_eq!(map["valid"].as_ref(), Some(&42));
     assert!(map["invalid"].isnt());
     assert_eq!(
-        map["invalid"].as_ref_err().unwrap().to_string(),
+        map["invalid"].as_err_msg().unwrap(),
         "invalid: invalid type: map, expected i32 at line 4 column 11"
     );
 }
@@ -91,7 +90,58 @@ fn test_deserialize_value() {
         )
     );
     assert_eq!(
-        thing.invalid.as_ref_err().unwrap().to_string(),
+        thing.invalid.as_err_msg().unwrap(),
         "invalid type: string \"Expected a number\", expected i32 at line 5 column 14"
+    );
+}
+
+#[derive(Debug)]
+struct MyError;
+
+impl std::fmt::Display for MyError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "MyError")
+    }
+}
+impl std::error::Error for MyError {}
+
+#[test]
+fn test_transformer_error() {
+    let yaml = r#"
+        - v: 42
+        - v: "Not a number"
+        - v: 3.14
+    "#;
+
+    let value: Value = dbt_serde_yaml::from_str(yaml).unwrap();
+
+    let things: Vec<ShouldBe<HashMap<String, i32>>> = value
+        .into_typed(
+            |_, _, _| panic!("Unused key in deserialization"),
+            |v| match v {
+                Value::String(_, _) => Err(Box::new(MyError)),
+                _ => Ok(None),
+            },
+        )
+        .unwrap();
+
+    let mut things = things.into_iter();
+
+    let thing0 = things.next().unwrap();
+    assert!(thing0.is());
+    assert_eq!(thing0.as_ref().unwrap().get("v"), Some(&42));
+
+    let thing1 = things.next().unwrap();
+    assert!(thing1.isnt());
+    match thing1.take_err() {
+        Some(e) => assert!(e.into_external().unwrap().is::<MyError>()),
+        _ => panic!("Expected Error::External"),
+    }
+
+    let thing2 = things.next().unwrap();
+    assert!(thing2.isnt());
+    assert_eq!(
+        thing2.as_err_msg().unwrap(),
+        "invalid type: floating point `3.14`, expected i32 at line 4 column 14"
     );
 }
