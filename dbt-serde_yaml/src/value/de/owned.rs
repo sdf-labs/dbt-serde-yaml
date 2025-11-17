@@ -399,7 +399,7 @@ macro_rules! maybe_expecting_should_be {
     ($self:expr, $method:ident, $($args:expr),*) => {{
         if $crate::shouldbe::is_expecting_should_be_then_reset() {
             let res = ValueRefDeserializer::new_with_transformed(
-                // SAFETY: ShouldBe<T>:Deserialize is only implemented for T:DeserializeOwned,
+                // SAFETY: ShouldBe<T>::Deserialize is only implemented for T:DeserializeOwned,
                 // so we know that `res` can not contain references to `self.value`.
                 unsafe { std::mem::transmute::<&Value, &'de Value>(&$self.value) },
                 $self.path,
