@@ -28,9 +28,9 @@ use crate::{Error, Value};
 /// `T` value, or the error (and the corresponding pre-deserialized value, if
 /// deserializing from a [Value]) that caused the failure.
 ///
-/// You can think of [ShouldBe<T>] as a more versatile `Result<T, Error>` that
+/// You can think of [`ShouldBe<T>`] as a more versatile `Result<T, Error>` that
 /// exposes the equality, ordering, hashing, cloning, and (de)serialization
-/// semantics of `T` (and indeed, [ShouldBe<T>] is `Into<Result<T, Error>>`),
+/// semantics of `T` (and indeed, [`ShouldBe<T>`] is `Into<Result<T, Error>>`),
 /// while also providing a more ergonomic API for inspecting the error case.
 ///
 /// ## Example
@@ -75,7 +75,7 @@ use crate::{Error, Value};
 ///
 /// # Clone semantics
 ///
-/// [ShouldBe<T>] is cloneable as long as `T` is cloneable. Cloning a
+/// [`ShouldBe<T>`] is cloneable as long as `T` is cloneable. Cloning a
 /// [ShouldBe::AndIs] variant clones the inner `T` value. Cloning a
 /// [ShouldBe::ButIsnt] variant, however, does *not* clone the inner [Error], as
 /// [Error] is not cloneable. Instead, the cloned [ShouldBe::ButIsnt] will share
@@ -114,7 +114,7 @@ use crate::{Error, Value};
 /// # use dbt_serde_yaml::{ShouldBe, Value};
 ///
 /// fn main() -> Result<(), dbt_serde_yaml::Error> {
-///    let yaml = "k: v";
+///    let yaml = "k: v\n";
 ///    let value: Value = dbt_serde_yaml::from_str(&yaml)?;
 ///    let should_be: ShouldBe<i32> = value.to_typed(|_, _, _| {}, |_| Ok(None))?;
 ///
@@ -141,9 +141,9 @@ use crate::{Error, Value};
 /// }
 /// ```
 ///
-/// # Serializing a [ShouldBe<T>]
+/// # Serializing a [`ShouldBe<T>`]
 ///
-/// You can serialize a [ShouldBe<T>] instance as long as `T` is serializable.
+/// You can serialize a [`ShouldBe<T>`] instance as long as `T` is serializable.
 /// When serializing a [ShouldBe::AndIs] variant, the inner `T` value is
 /// serialized as usual. When serializing a [ShouldBe::ButIsnt] variant, if it
 /// contains a raw [Value] (i.e., it was deserialized from a [Value]), then the
@@ -395,7 +395,7 @@ where
 }
 
 /// An opaque type that captures the reason why a deserialization to a
-/// [ShouldBe<T>] failed.
+/// [`ShouldBe<T>`] failed.
 ///
 /// This type is only meant to be used within the [ShouldBe] type.
 #[derive(Clone)]
