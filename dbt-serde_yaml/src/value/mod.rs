@@ -732,7 +732,7 @@ impl Value {
     }
 
     /// Returns the contained [Span].
-    pub fn span(&self) -> Span {
+    pub fn span(&self) -> &Span {
         match self {
             Value::Null(span)
             | Value::Bool(_, span)
@@ -740,7 +740,7 @@ impl Value {
             | Value::Sequence(_, span)
             | Value::Mapping(_, span)
             | Value::Tagged(_, span)
-            | Value::String(_, span) => span.clone(),
+            | Value::String(_, span) => span,
         }
     }
 
@@ -768,16 +768,16 @@ impl Value {
     fn broadcast_start_mark(&self) {
         spanned::set_marker(self.span().start);
         #[cfg(feature = "filename")]
-        if let Some(filename) = self.span().filename {
-            spanned::set_filename(filename);
+        if let Some(filename) = &self.span().filename {
+            spanned::set_filename(std::sync::Arc::clone(filename));
         }
     }
 
     fn broadcast_end_mark(&self) {
         spanned::set_marker(self.span().end);
         #[cfg(feature = "filename")]
-        if let Some(filename) = self.span().filename {
-            spanned::set_filename(filename);
+        if let Some(filename) = &self.span().filename {
+            spanned::set_filename(std::sync::Arc::clone(filename));
         }
     }
 }

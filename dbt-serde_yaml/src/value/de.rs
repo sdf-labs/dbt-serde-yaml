@@ -335,7 +335,7 @@ impl Value {
     where
         V: Visitor<'de>,
     {
-        let span = self.span();
+        let span = self.span().clone();
         self.broadcast_end_mark();
         maybe_why_not!(
             self,
@@ -349,7 +349,10 @@ impl Value {
 
     #[cold]
     fn invalid_type(&self, exp: &dyn Expected) -> Error {
-        error::set_span(de::Error::invalid_type(self.unexpected(), exp), self.span())
+        error::set_span(
+            de::Error::invalid_type(self.unexpected(), exp),
+            self.span().clone(),
+        )
     }
 
     /// Returns an [Unexpected] that describes this Value
