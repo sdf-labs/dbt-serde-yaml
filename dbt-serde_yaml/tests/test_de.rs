@@ -756,3 +756,33 @@ fn test_multiline_string() {
 
     test_de(yaml, &expected);
 }
+
+#[test]
+fn test_numeric_keys_as_strings() {
+    // Test that numeric keys in YAML maps are automatically converted to strings
+    // when deserializing to HashMap<String, V>.
+    use std::collections::HashMap;
+
+    let yaml = indoc! {"
+        label_map:
+          7: weekly
+          30: monthly
+          90: quarterly
+    "};
+
+    #[derive(Deserialize, PartialEq, Debug)]
+    struct Data {
+        label_map: HashMap<String, String>,
+    }
+
+    let mut label_map = HashMap::new();
+    label_map.insert("7".to_owned(), "weekly".to_owned());
+    label_map.insert("30".to_owned(), "monthly".to_owned());
+    label_map.insert("90".to_owned(), "quarterly".to_owned());
+
+    let expected = Data {
+        label_map,
+    };
+
+    test_de(yaml, &expected);
+}

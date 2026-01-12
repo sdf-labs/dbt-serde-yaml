@@ -1271,13 +1271,26 @@ impl<'de> MapAccess<'de> for MapRefDeserializer<'de, '_, '_, '_> {
     where
         T: DeserializeSeed<'de>,
     {
+        use super::owned::ValueDeserializer as OwnedValueDeserializer;
+        
         self.current_key = None;
         match self.iter.as_mut().and_then(Iterator::next) {
             Some((key, value)) => {
                 self.value = Some(value);
-                self.current_key = key.as_str().map(String::from);
-                let deserializer = ValueRefDeserializer::new_with(key, self.path, None, None);
-                seed.deserialize(deserializer).map(Some)
+                match key {
+                    Value::Number(n, ..) => {
+                        self.current_key = Some(n.to_string());
+                        // Use owned deserializer for the converted string key
+                        let key_string = Value::from(n.to_string());
+                        let deserializer = OwnedValueDeserializer::new_with(key_string, self.path, None, None);
+                        seed.deserialize(deserializer).map(Some)
+                    }
+                    _ => {
+                        self.current_key = key.as_str().map(String::from);
+                        let deserializer = ValueRefDeserializer::new_with(key, self.path, None, None);
+                        seed.deserialize(deserializer).map(Some)
+                    }
+                }
             }
             None => Ok(None),
         }

@@ -1207,8 +1207,17 @@ impl<'de, 'u, 'f> MapAccess<'de> for MapDeserializer<'_, 'u, 'f> {
         match self.iter.next() {
             Some((key, value)) => {
                 self.value = Some(value);
-                self.current_key = key.as_str().map(|s| s.to_string());
-                let deserializer = ValueDeserializer::new_with(key, self.path, None, None);
+                let key_for_deserialize = match &key {
+                    Value::Number(n, ..) => {
+                        self.current_key = Some(n.to_string());
+                        Value::from(n.to_string())
+                    }
+                    _ => {
+                        self.current_key = key.as_str().map(|s| s.to_string());
+                        key
+                    }
+                };
+                let deserializer = ValueDeserializer::new_with(key_for_deserialize, self.path, None, None);
                 seed.deserialize(deserializer).map(Some)
             }
             None => Ok(None),
