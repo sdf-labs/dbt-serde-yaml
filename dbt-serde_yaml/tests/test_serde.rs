@@ -175,6 +175,12 @@ fn test_char() {
         '-'
     "};
     assert_eq!(yaml, dbt_serde_yaml::to_string(&ch).unwrap());
+
+    let ch = '\t';
+    let yaml = indoc! {r#"
+        "\t"
+    "#};
+    assert_eq!(yaml, dbt_serde_yaml::to_string(&ch).unwrap());
 }
 
 #[test]

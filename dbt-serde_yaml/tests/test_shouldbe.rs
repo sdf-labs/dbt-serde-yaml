@@ -106,7 +106,7 @@ impl std::fmt::Display for MyError {
 impl std::error::Error for MyError {}
 
 #[test]
-fn test_transformer_error() {
+fn test_nested_transformer_error() {
     let yaml = r#"
         - v: 42
         - v: "Not a number"
@@ -115,6 +115,38 @@ fn test_transformer_error() {
 
     let value: Value = dbt_serde_yaml::from_str(yaml).unwrap();
 
+    // Borrowed
+    let things: Vec<ShouldBe<HashMap<String, i32>>> = value
+        .to_typed(
+            |_, _, _| panic!("Unused key in deserialization"),
+            |v| match v {
+                Value::String(_, _) => Err(Box::new(MyError)),
+                _ => Ok(None),
+            },
+        )
+        .unwrap();
+
+    let mut things = things.into_iter();
+
+    let thing0 = things.next().unwrap();
+    assert!(thing0.is());
+    assert_eq!(thing0.as_ref().unwrap().get("v"), Some(&42));
+
+    let thing1 = things.next().unwrap();
+    assert!(thing1.isnt());
+    match thing1.take_err() {
+        Some(e) => assert!(e.into_external().unwrap().is::<MyError>()),
+        _ => panic!("Expected Error::External"),
+    }
+
+    let thing2 = things.next().unwrap();
+    assert!(thing2.isnt());
+    assert_eq!(
+        thing2.as_err_msg().unwrap(),
+        "invalid type: floating point `3.14`, expected i32 at line 4 column 14"
+    );
+
+    // Owned
     let things: Vec<ShouldBe<HashMap<String, i32>>> = value
         .into_typed(
             |_, _, _| panic!("Unused key in deserialization"),
@@ -143,5 +175,78 @@ fn test_transformer_error() {
     assert_eq!(
         thing2.as_err_msg().unwrap(),
         "invalid type: floating point `3.14`, expected i32 at line 4 column 14"
+    );
+}
+
+#[test]
+fn test_transformer_error() {
+    let yaml = r#"
+        - 42
+        - "Not a number"
+        - 3.14
+    "#;
+
+    let value: Value = dbt_serde_yaml::from_str(yaml).unwrap();
+
+    // Borrowed
+    let things: Vec<ShouldBe<i32>> = value
+        .to_typed(
+            |_, _, _| panic!("Unused key in deserialization"),
+            |v| match v {
+                Value::String(_, _) => Err(Box::new(MyError)),
+                _ => Ok(None),
+            },
+        )
+        .unwrap();
+
+    let mut things = things.into_iter();
+
+    let thing0 = things.next().unwrap();
+    assert!(thing0.is());
+    assert_eq!(thing0.as_ref(), Some(&42));
+
+    let thing1 = things.next().unwrap();
+    assert!(thing1.isnt());
+    match thing1.take_err() {
+        Some(e) => assert!(e.into_external().unwrap().is::<MyError>()),
+        _ => panic!("Expected Error::External"),
+    }
+
+    let thing2 = things.next().unwrap();
+    assert!(thing2.isnt());
+    assert_eq!(
+        thing2.as_err_msg().unwrap(),
+        "invalid type: floating point `3.14`, expected i32 at line 4 column 11"
+    );
+
+    // Owned
+    let things: Vec<ShouldBe<i32>> = value
+        .into_typed(
+            |_, _, _| panic!("Unused key in deserialization"),
+            |v| match v {
+                Value::String(_, _) => Err(Box::new(MyError)),
+                _ => Ok(None),
+            },
+        )
+        .unwrap();
+
+    let mut things = things.into_iter();
+
+    let thing0 = things.next().unwrap();
+    assert!(thing0.is());
+    assert_eq!(thing0.as_ref(), Some(&42));
+
+    let thing1 = things.next().unwrap();
+    assert!(thing1.isnt());
+    match thing1.take_err() {
+        Some(e) => assert!(e.into_external().unwrap().is::<MyError>()),
+        _ => panic!("Expected Error::External"),
+    }
+
+    let thing2 = things.next().unwrap();
+    assert!(thing2.isnt());
+    assert_eq!(
+        thing2.as_err_msg().unwrap(),
+        "invalid type: floating point `3.14`, expected i32 at line 4 column 11"
     );
 }

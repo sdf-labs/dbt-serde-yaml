@@ -389,6 +389,7 @@ impl<'a, 'u, 'f> ValueDeserializer<'a, 'u, 'f> {
                 if let Some(v) = transformer(&self.value)? {
                     self.value = v;
                 }
+                self.is_transformed = true;
             }
         }
         Ok(())
@@ -398,15 +399,18 @@ impl<'a, 'u, 'f> ValueDeserializer<'a, 'u, 'f> {
 macro_rules! maybe_expecting_should_be {
     ($self:expr, $method:ident, $($args:expr),*) => {{
         if $crate::shouldbe::is_expecting_should_be_then_reset() {
-            let res = ValueRefDeserializer::new_with_transformed(
-                // SAFETY: ShouldBe<T>::Deserialize is only implemented for T:DeserializeOwned,
-                // so we know that `res` can not contain references to `self.value`.
-                unsafe { std::mem::transmute::<&Value, &'de Value>(&$self.value) },
-                $self.path,
-                $self.unused_key_callback,
-                $self.field_transformer,
-            )
-            .$method($($args),*);
+            let res = $self.maybe_apply_transformation().map_err(|e| e.into())
+                .and_then(|_| {
+                    ValueRefDeserializer::new_with_transformed(
+                        // SAFETY: ShouldBe<T>::Deserialize is only implemented for T:DeserializeOwned,
+                        // so we know that `res` can not contain references to `self.value`.
+                        unsafe { std::mem::transmute::<&Value, &'de Value>(&$self.value) },
+                        $self.path,
+                        $self.unused_key_callback,
+                        $self.field_transformer,
+                    )
+                    .$method($($args),*)
+            });
             return match res {
                 Ok(value) => Ok(value),
                 Err(e) => {
@@ -443,8 +447,8 @@ impl<'de, 'u, 'f> Deserializer<'de> for ValueDeserializer<'_, 'u, 'f> {
             }
             return Err(Error::custom("Value deserialized via fast path"));
         }
-        self.maybe_apply_transformation()?;
         maybe_expecting_should_be!(self, deserialize_any, visitor);
+        self.maybe_apply_transformation()?;
 
         match self.value {
             Value::Null(..) => visitor.visit_unit(),
@@ -474,8 +478,8 @@ impl<'de, 'u, 'f> Deserializer<'de> for ValueDeserializer<'_, 'u, 'f> {
     where
         V: Visitor<'de>,
     {
-        self.maybe_apply_transformation()?;
         maybe_expecting_should_be!(self, deserialize_bool, visitor);
+        self.maybe_apply_transformation()?;
 
         let span = self.value.span().clone();
         self.value.broadcast_end_mark();
@@ -490,6 +494,7 @@ impl<'de, 'u, 'f> Deserializer<'de> for ValueDeserializer<'_, 'u, 'f> {
     where
         V: Visitor<'de>,
     {
+        maybe_expecting_should_be!(self, deserialize_i8, visitor);
         self.maybe_apply_transformation()?;
         self.value.deserialize_number(visitor)
     }
@@ -498,6 +503,7 @@ impl<'de, 'u, 'f> Deserializer<'de> for ValueDeserializer<'_, 'u, 'f> {
     where
         V: Visitor<'de>,
     {
+        maybe_expecting_should_be!(self, deserialize_i16, visitor);
         self.maybe_apply_transformation()?;
         self.value.deserialize_number(visitor)
     }
@@ -506,6 +512,7 @@ impl<'de, 'u, 'f> Deserializer<'de> for ValueDeserializer<'_, 'u, 'f> {
     where
         V: Visitor<'de>,
     {
+        maybe_expecting_should_be!(self, deserialize_i32, visitor);
         self.maybe_apply_transformation()?;
         self.value.deserialize_number(visitor)
     }
@@ -514,6 +521,7 @@ impl<'de, 'u, 'f> Deserializer<'de> for ValueDeserializer<'_, 'u, 'f> {
     where
         V: Visitor<'de>,
     {
+        maybe_expecting_should_be!(self, deserialize_i64, visitor);
         self.maybe_apply_transformation()?;
         self.value.deserialize_number(visitor)
     }
@@ -522,6 +530,7 @@ impl<'de, 'u, 'f> Deserializer<'de> for ValueDeserializer<'_, 'u, 'f> {
     where
         V: Visitor<'de>,
     {
+        maybe_expecting_should_be!(self, deserialize_i128, visitor);
         self.maybe_apply_transformation()?;
         self.value.deserialize_number(visitor)
     }
@@ -530,6 +539,7 @@ impl<'de, 'u, 'f> Deserializer<'de> for ValueDeserializer<'_, 'u, 'f> {
     where
         V: Visitor<'de>,
     {
+        maybe_expecting_should_be!(self, deserialize_u8, visitor);
         self.maybe_apply_transformation()?;
         self.value.deserialize_number(visitor)
     }
@@ -538,6 +548,7 @@ impl<'de, 'u, 'f> Deserializer<'de> for ValueDeserializer<'_, 'u, 'f> {
     where
         V: Visitor<'de>,
     {
+        maybe_expecting_should_be!(self, deserialize_u16, visitor);
         self.maybe_apply_transformation()?;
         self.value.deserialize_number(visitor)
     }
@@ -546,6 +557,7 @@ impl<'de, 'u, 'f> Deserializer<'de> for ValueDeserializer<'_, 'u, 'f> {
     where
         V: Visitor<'de>,
     {
+        maybe_expecting_should_be!(self, deserialize_u32, visitor);
         self.maybe_apply_transformation()?;
         self.value.deserialize_number(visitor)
     }
@@ -554,6 +566,7 @@ impl<'de, 'u, 'f> Deserializer<'de> for ValueDeserializer<'_, 'u, 'f> {
     where
         V: Visitor<'de>,
     {
+        maybe_expecting_should_be!(self, deserialize_u64, visitor);
         self.maybe_apply_transformation()?;
         self.value.deserialize_number(visitor)
     }
@@ -562,6 +575,7 @@ impl<'de, 'u, 'f> Deserializer<'de> for ValueDeserializer<'_, 'u, 'f> {
     where
         V: Visitor<'de>,
     {
+        maybe_expecting_should_be!(self, deserialize_u128, visitor);
         self.maybe_apply_transformation()?;
         self.value.deserialize_number(visitor)
     }
@@ -570,6 +584,7 @@ impl<'de, 'u, 'f> Deserializer<'de> for ValueDeserializer<'_, 'u, 'f> {
     where
         V: Visitor<'de>,
     {
+        maybe_expecting_should_be!(self, deserialize_f32, visitor);
         self.maybe_apply_transformation()?;
         self.value.deserialize_number(visitor)
     }
@@ -578,6 +593,7 @@ impl<'de, 'u, 'f> Deserializer<'de> for ValueDeserializer<'_, 'u, 'f> {
     where
         V: Visitor<'de>,
     {
+        maybe_expecting_should_be!(self, deserialize_f64, visitor);
         self.maybe_apply_transformation()?;
         self.value.deserialize_number(visitor)
     }
@@ -600,8 +616,8 @@ impl<'de, 'u, 'f> Deserializer<'de> for ValueDeserializer<'_, 'u, 'f> {
     where
         V: Visitor<'de>,
     {
-        self.maybe_apply_transformation()?;
         maybe_expecting_should_be!(self, deserialize_string, visitor);
+        self.maybe_apply_transformation()?;
 
         let span = self.value.span().clone();
         self.value.broadcast_end_mark();
@@ -623,8 +639,8 @@ impl<'de, 'u, 'f> Deserializer<'de> for ValueDeserializer<'_, 'u, 'f> {
     where
         V: Visitor<'de>,
     {
-        self.maybe_apply_transformation()?;
         maybe_expecting_should_be!(self, deserialize_byte_buf, visitor);
+        self.maybe_apply_transformation()?;
 
         let span = self.value.span().clone();
         self.value.broadcast_end_mark();
@@ -646,8 +662,8 @@ impl<'de, 'u, 'f> Deserializer<'de> for ValueDeserializer<'_, 'u, 'f> {
     where
         V: Visitor<'de>,
     {
-        self.maybe_apply_transformation()?;
         maybe_expecting_should_be!(self, deserialize_option, visitor);
+        self.maybe_apply_transformation()?;
 
         let span = self.value.span().clone();
         match self.value {
@@ -667,8 +683,8 @@ impl<'de, 'u, 'f> Deserializer<'de> for ValueDeserializer<'_, 'u, 'f> {
     where
         V: Visitor<'de>,
     {
-        self.maybe_apply_transformation()?;
         maybe_expecting_should_be!(self, deserialize_unit, visitor);
+        self.maybe_apply_transformation()?;
 
         let span = self.value.span().clone();
         self.value.broadcast_end_mark();
@@ -694,8 +710,8 @@ impl<'de, 'u, 'f> Deserializer<'de> for ValueDeserializer<'_, 'u, 'f> {
     where
         V: Visitor<'de>,
     {
-        self.maybe_apply_transformation()?;
         maybe_expecting_should_be!(self, deserialize_newtype_struct, name, visitor);
+        self.maybe_apply_transformation()?;
 
         let span = self.value.span().clone();
         self.value.broadcast_end_mark();
@@ -708,8 +724,8 @@ impl<'de, 'u, 'f> Deserializer<'de> for ValueDeserializer<'_, 'u, 'f> {
     where
         V: Visitor<'de>,
     {
-        self.maybe_apply_transformation()?;
         maybe_expecting_should_be!(self, deserialize_seq, visitor);
+        self.maybe_apply_transformation()?;
 
         let span = self.value.span().clone();
         self.value.broadcast_end_mark();
@@ -756,8 +772,8 @@ impl<'de, 'u, 'f> Deserializer<'de> for ValueDeserializer<'_, 'u, 'f> {
     where
         V: Visitor<'de>,
     {
-        self.maybe_apply_transformation()?;
         maybe_expecting_should_be!(self, deserialize_map, visitor);
+        self.maybe_apply_transformation()?;
 
         let span = self.value.span().clone();
         self.value.broadcast_end_mark();
@@ -790,8 +806,8 @@ impl<'de, 'u, 'f> Deserializer<'de> for ValueDeserializer<'_, 'u, 'f> {
     where
         V: Visitor<'de>,
     {
-        self.maybe_apply_transformation()?;
         maybe_expecting_should_be!(self, deserialize_struct, name, fields, visitor);
+        self.maybe_apply_transformation()?;
 
         let span = self.value.span().clone();
         self.value.broadcast_end_mark();
@@ -826,8 +842,8 @@ impl<'de, 'u, 'f> Deserializer<'de> for ValueDeserializer<'_, 'u, 'f> {
     where
         V: Visitor<'de>,
     {
-        self.maybe_apply_transformation()?;
         maybe_expecting_should_be!(self, deserialize_enum, name, variants, visitor);
+        self.maybe_apply_transformation()?;
 
         let span = self.value.span().clone();
         self.value.broadcast_end_mark();
@@ -872,7 +888,7 @@ impl<'de, 'u, 'f> Deserializer<'de> for ValueDeserializer<'_, 'u, 'f> {
         self.deserialize_string(visitor)
     }
 
-    fn deserialize_ignored_any<V>(self, visitor: V) -> Result<V::Value, Error>
+    fn deserialize_ignored_any<V>(mut self, visitor: V) -> Result<V::Value, Error>
     where
         V: Visitor<'de>,
     {

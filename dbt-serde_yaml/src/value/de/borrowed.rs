@@ -394,7 +394,18 @@ macro_rules! maybe_transform_and_forward_to_value_deserializer {
     ($self:expr, $method:ident, $($args:expr),*) => {
         if let Some(transformer) = &mut $self.field_transformer {
             if !$self.is_transformed && crate::verbatim::should_transform_any() {
-                if let Some(v) = transformer(&$self.value)? {
+                if let Some(v) = transformer(&$self.value).map_err(|err| {
+                    let err = Error::from(err);
+                    if $crate::shouldbe::is_expecting_should_be_then_reset() {
+                        let msg = err.to_string();
+                        $crate::shouldbe::set_why_not($self.value.clone(), err);
+                        // This error will be ignored by ShouldBe, but we still have to
+                        // return an error here nonetheless.
+                        Error::custom(msg)
+                    } else {
+                        err
+                    }
+                })? {
                     return ValueDeserializer::new_with_transformed(
                         v,
                         $self.path,
